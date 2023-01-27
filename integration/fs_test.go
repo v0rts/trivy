@@ -11,11 +11,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/aquasecurity/trivy/pkg/types"
 )
 
 func TestFilesystem(t *testing.T) {
 	type args struct {
-		securityChecks string
+		scanners       string
 		severity       []string
 		ignoreIDs      []string
 		policyPaths    []string
@@ -28,6 +30,8 @@ func TestFilesystem(t *testing.T) {
 		helmValuesFile []string
 		skipFiles      []string
 		skipDirs       []string
+		command        string
+		format         string
 	}
 	tests := []struct {
 		name   string
@@ -37,201 +41,210 @@ func TestFilesystem(t *testing.T) {
 		{
 			name: "gomod",
 			args: args{
-				securityChecks: "vuln",
-				input:          "testdata/fixtures/fs/gomod",
+				scanners: types.VulnerabilityScanner,
+				input:    "testdata/fixtures/fs/gomod",
 			},
 			golden: "testdata/gomod.json.golden",
 		},
 		{
 			name: "gomod with skip files",
 			args: args{
-				securityChecks: "vuln",
-				input:          "testdata/fixtures/fs/gomod",
-				skipFiles:      []string{"testdata/fixtures/fs/gomod/submod2/go.mod"},
+				scanners:  types.VulnerabilityScanner,
+				input:     "testdata/fixtures/fs/gomod",
+				skipFiles: []string{"testdata/fixtures/fs/gomod/submod2/go.mod"},
 			},
 			golden: "testdata/gomod-skip.json.golden",
 		},
 		{
 			name: "gomod with skip dirs",
 			args: args{
-				securityChecks: "vuln",
-				input:          "testdata/fixtures/fs/gomod",
-				skipDirs:       []string{"testdata/fixtures/fs/gomod/submod2"},
+				scanners: types.VulnerabilityScanner,
+				input:    "testdata/fixtures/fs/gomod",
+				skipDirs: []string{"testdata/fixtures/fs/gomod/submod2"},
 			},
 			golden: "testdata/gomod-skip.json.golden",
 		},
 		{
 			name: "nodejs",
 			args: args{
-				securityChecks: "vuln",
-				input:          "testdata/fixtures/fs/nodejs",
-				listAllPkgs:    true,
+				scanners:    types.VulnerabilityScanner,
+				input:       "testdata/fixtures/fs/nodejs",
+				listAllPkgs: true,
 			},
 			golden: "testdata/nodejs.json.golden",
 		},
 		{
 			name: "yarn",
 			args: args{
-				securityChecks: "vuln",
-				input:          "testdata/fixtures/fs/yarn",
-				listAllPkgs:    true,
+				scanners:    types.VulnerabilityScanner,
+				input:       "testdata/fixtures/fs/yarn",
+				listAllPkgs: true,
 			},
 			golden: "testdata/yarn.json.golden",
 		},
 		{
 			name: "pnpm",
 			args: args{
-				securityChecks: "vuln",
-				input:          "testdata/fixtures/fs/pnpm",
+				scanners: types.VulnerabilityScanner,
+				input:    "testdata/fixtures/fs/pnpm",
 			},
 			golden: "testdata/pnpm.json.golden",
 		},
 		{
 			name: "pip",
 			args: args{
-				securityChecks: "vuln",
-				listAllPkgs:    true,
-				input:          "testdata/fixtures/fs/pip",
+				scanners:    types.VulnerabilityScanner,
+				listAllPkgs: true,
+				input:       "testdata/fixtures/fs/pip",
 			},
 			golden: "testdata/pip.json.golden",
 		},
 		{
 			name: "pom",
 			args: args{
-				securityChecks: "vuln",
-				input:          "testdata/fixtures/fs/pom",
+				scanners: types.VulnerabilityScanner,
+				input:    "testdata/fixtures/fs/pom",
 			},
 			golden: "testdata/pom.json.golden",
 		},
 		{
 			name: "gradle",
 			args: args{
-				securityChecks: "vuln",
-				input:          "testdata/fixtures/fs/gradle",
+				scanners: types.VulnerabilityScanner,
+				input:    "testdata/fixtures/fs/gradle",
 			},
 			golden: "testdata/gradle.json.golden",
 		},
 		{
 			name: "conan",
 			args: args{
-				securityChecks: "vuln",
-				listAllPkgs:    true,
-				input:          "testdata/fixtures/fs/conan",
+				scanners:    types.VulnerabilityScanner,
+				listAllPkgs: true,
+				input:       "testdata/fixtures/fs/conan",
 			},
 			golden: "testdata/conan.json.golden",
 		},
 		{
 			name: "nuget",
 			args: args{
-				securityChecks: "vuln",
-				listAllPkgs:    true,
-				input:          "testdata/fixtures/fs/nuget",
+				scanners:    types.VulnerabilityScanner,
+				listAllPkgs: true,
+				input:       "testdata/fixtures/fs/nuget",
 			},
 			golden: "testdata/nuget.json.golden",
 		},
 		{
 			name: "dotnet",
 			args: args{
-				securityChecks: "vuln",
-				listAllPkgs:    true,
-				input:          "testdata/fixtures/fs/dotnet",
+				scanners:    types.VulnerabilityScanner,
+				listAllPkgs: true,
+				input:       "testdata/fixtures/fs/dotnet",
 			},
 			golden: "testdata/dotnet.json.golden",
 		},
 		{
 			name: "cocoapods",
 			args: args{
-				securityChecks: "vuln",
-				listAllPkgs:    true,
-				input:          "testdata/fixtures/fs/cocoapods",
+				scanners:    types.VulnerabilityScanner,
+				listAllPkgs: true,
+				input:       "testdata/fixtures/fs/cocoapods",
 			},
 			golden: "testdata/cocoapods.json.golden",
 		},
 		{
+			name: "pubspec.lock",
+			args: args{
+				scanners:    types.VulnerabilityScanner,
+				listAllPkgs: true,
+				input:       "testdata/fixtures/fs/pubspec",
+			},
+			golden: "testdata/pubspec.lock.json.golden",
+		},
+		{
 			name: "mix.lock",
 			args: args{
-				securityChecks: "vuln",
-				listAllPkgs:    true,
-				input:          "testdata/fixtures/fs/mixlock",
+				scanners:    types.VulnerabilityScanner,
+				listAllPkgs: true,
+				input:       "testdata/fixtures/fs/mixlock",
 			},
 			golden: "testdata/mix.lock.json.golden",
 		},
 		{
 			name: "dockerfile",
 			args: args{
-				securityChecks: "config",
-				input:          "testdata/fixtures/fs/dockerfile",
-				namespaces:     []string{"testing"},
+				scanners:   types.MisconfigScanner,
+				input:      "testdata/fixtures/fs/dockerfile",
+				namespaces: []string{"testing"},
 			},
 			golden: "testdata/dockerfile.json.golden",
 		},
 		{
 			name: "dockerfile with custom file pattern",
 			args: args{
-				securityChecks: "config",
-				input:          "testdata/fixtures/fs/dockerfile_file_pattern",
-				namespaces:     []string{"testing"},
-				filePatterns:   []string{"dockerfile:Customfile"},
+				scanners:     types.MisconfigScanner,
+				input:        "testdata/fixtures/fs/dockerfile_file_pattern",
+				namespaces:   []string{"testing"},
+				filePatterns: []string{"dockerfile:Customfile"},
 			},
 			golden: "testdata/dockerfile_file_pattern.json.golden",
 		},
 		{
 			name: "dockerfile with rule exception",
 			args: args{
-				securityChecks: "config",
-				policyPaths:    []string{"testdata/fixtures/fs/rule-exception/policy"},
-				input:          "testdata/fixtures/fs/rule-exception",
+				scanners:    types.MisconfigScanner,
+				policyPaths: []string{"testdata/fixtures/fs/rule-exception/policy"},
+				input:       "testdata/fixtures/fs/rule-exception",
 			},
 			golden: "testdata/dockerfile-rule-exception.json.golden",
 		},
 		{
 			name: "dockerfile with namespace exception",
 			args: args{
-				securityChecks: "config",
-				policyPaths:    []string{"testdata/fixtures/fs/namespace-exception/policy"},
-				input:          "testdata/fixtures/fs/namespace-exception",
+				scanners:    types.MisconfigScanner,
+				policyPaths: []string{"testdata/fixtures/fs/namespace-exception/policy"},
+				input:       "testdata/fixtures/fs/namespace-exception",
 			},
 			golden: "testdata/dockerfile-namespace-exception.json.golden",
 		},
 		{
 			name: "dockerfile with custom policies",
 			args: args{
-				securityChecks: "config",
-				policyPaths:    []string{"testdata/fixtures/fs/custom-policy/policy"},
-				namespaces:     []string{"user"},
-				input:          "testdata/fixtures/fs/custom-policy",
+				scanners:    types.MisconfigScanner,
+				policyPaths: []string{"testdata/fixtures/fs/custom-policy/policy"},
+				namespaces:  []string{"user"},
+				input:       "testdata/fixtures/fs/custom-policy",
 			},
 			golden: "testdata/dockerfile-custom-policies.json.golden",
 		},
 		{
 			name: "tarball helm chart scanning with builtin policies",
 			args: args{
-				securityChecks: "config",
-				input:          "testdata/fixtures/fs/helm",
+				scanners: types.MisconfigScanner,
+				input:    "testdata/fixtures/fs/helm",
 			},
 			golden: "testdata/helm.json.golden",
 		},
 		{
 			name: "helm chart directory scanning with builtin policies",
 			args: args{
-				securityChecks: "config",
-				input:          "testdata/fixtures/fs/helm_testchart",
+				scanners: types.MisconfigScanner,
+				input:    "testdata/fixtures/fs/helm_testchart",
 			},
 			golden: "testdata/helm_testchart.json.golden",
 		},
 		{
 			name: "helm chart directory scanning with value overrides using set",
 			args: args{
-				securityChecks: "config",
-				input:          "testdata/fixtures/fs/helm_testchart",
-				helmSet:        []string{"securityContext.runAsUser=0"},
+				scanners: types.MisconfigScanner,
+				input:    "testdata/fixtures/fs/helm_testchart",
+				helmSet:  []string{"securityContext.runAsUser=0"},
 			},
 			golden: "testdata/helm_testchart.overridden.json.golden",
 		},
 		{
 			name: "helm chart directory scanning with value overrides using value file",
 			args: args{
-				securityChecks: "config",
+				scanners:       types.MisconfigScanner,
 				input:          "testdata/fixtures/fs/helm_testchart",
 				helmValuesFile: []string{"testdata/fixtures/fs/helm_values/values.yaml"},
 			},
@@ -240,19 +253,37 @@ func TestFilesystem(t *testing.T) {
 		{
 			name: "helm chart directory scanning with builtin policies and non string Chart name",
 			args: args{
-				securityChecks: "config",
-				input:          "testdata/fixtures/fs/helm_badname",
+				scanners: types.MisconfigScanner,
+				input:    "testdata/fixtures/fs/helm_badname",
 			},
 			golden: "testdata/helm_badname.json.golden",
 		},
 		{
 			name: "secrets",
 			args: args{
-				securityChecks: "vuln,secret",
-				input:          "testdata/fixtures/fs/secrets",
-				secretConfig:   "testdata/fixtures/fs/secrets/trivy-secret.yaml",
+				scanners:     "vuln,secret",
+				input:        "testdata/fixtures/fs/secrets",
+				secretConfig: "testdata/fixtures/fs/secrets/trivy-secret.yaml",
 			},
 			golden: "testdata/secrets.json.golden",
+		},
+		{
+			name: "conda generating CycloneDX SBOM",
+			args: args{
+				command: "rootfs",
+				format:  "cyclonedx",
+				input:   "testdata/fixtures/fs/conda",
+			},
+			golden: "testdata/conda-cyclonedx.json.golden",
+		},
+		{
+			name: "conda generating SPDX SBOM",
+			args: args{
+				command: "rootfs",
+				format:  "spdx-json",
+				input:   "testdata/fixtures/fs/conda",
+			},
+			golden: "testdata/conda-spdx.json.golden",
 		},
 	}
 
@@ -264,9 +295,31 @@ func TestFilesystem(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+
+			command := "fs"
+			if tt.args.command != "" {
+				command = tt.args.command
+			}
+
+			format := "json"
+			if tt.args.format != "" {
+				format = tt.args.format
+			}
+
 			osArgs := []string{
-				"-q", "--cache-dir", cacheDir, "fs", "--skip-db-update", "--skip-policy-update",
-				"--format", "json", "--offline-scan", "--security-checks", tt.args.securityChecks,
+				"-q",
+				"--cache-dir",
+				cacheDir,
+				command,
+				"--skip-db-update",
+				"--skip-policy-update",
+				"--format",
+				format,
+				"--offline-scan",
+			}
+
+			if tt.args.scanners != "" {
+				osArgs = append(osArgs, "--scanners", tt.args.scanners)
 			}
 
 			if len(tt.args.policyPaths) != 0 {
@@ -344,7 +397,16 @@ func TestFilesystem(t *testing.T) {
 			require.NoError(t, err)
 
 			// Compare want and got
-			compareReports(t, tt.golden, outputFile)
+			switch format {
+			case "cyclonedx":
+				compareCycloneDX(t, tt.golden, outputFile)
+			case "spdx-json":
+				compareSpdxJson(t, tt.golden, outputFile)
+			case "json":
+				compareReports(t, tt.golden, outputFile)
+			default:
+				require.Fail(t, "invalid format", "format: %s", format)
+			}
 		})
 	}
 }

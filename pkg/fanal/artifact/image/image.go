@@ -2,7 +2,6 @@ package image
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -75,15 +74,12 @@ func (a Artifact) Inspect(ctx context.Context) (types.ArtifactReference, error) 
 		return types.ArtifactReference{}, xerrors.Errorf("unable to get the image ID: %w", err)
 	}
 
-	diffIDs, err := a.image.LayerIDs()
-	if err != nil {
-		return types.ArtifactReference{}, xerrors.Errorf("unable to get layer IDs: %w", err)
-	}
-
 	configFile, err := a.image.ConfigFile()
 	if err != nil {
 		return types.ArtifactReference{}, xerrors.Errorf("unable to get the image's config file: %w", err)
 	}
+
+	diffIDs := a.diffIDs(configFile)
 
 	// Debug
 	log.Logger.Debugf("Image ID: %s", imageID)
@@ -317,6 +313,15 @@ func (a Artifact) inspectLayer(ctx context.Context, layerInfo LayerInfo, disable
 	return blobInfo, nil
 }
 
+func (a Artifact) diffIDs(configFile *v1.ConfigFile) []string {
+	if configFile == nil {
+		return nil
+	}
+	return lo.Map(configFile.RootFS.DiffIDs, func(diffID v1.Hash, _ int) string {
+		return diffID.String()
+	})
+}
+
 func (a Artifact) uncompressedLayer(diffID string) (string, io.Reader, error) {
 	// diffID is a hash of the uncompressed layer
 	h, err := v1.NewHash(diffID)
@@ -353,25 +358,29 @@ func (a Artifact) isCompressed(l v1.Layer) bool {
 }
 
 func (a Artifact) inspectConfig(imageID string, osFound types.OS) error {
-	configBlob, err := a.image.RawConfigFile()
+	config, err := a.image.ConfigFile()
 	if err != nil {
 		return xerrors.Errorf("unable to get config blob: %w", err)
 	}
 
-	pkgs := a.analyzer.AnalyzeImageConfig(osFound, configBlob)
+	result := lo.FromPtr(a.analyzer.AnalyzeImageConfig(osFound, config))
 
-	var s1 v1.ConfigFile
-	if err = json.Unmarshal(configBlob, &s1); err != nil {
-		return xerrors.Errorf("json marshal error: %w", err)
+	// Identify packages from history.
+	var historyPkgs types.Packages
+	for _, pi := range result.PackageInfos {
+		if pi.FilePath == types.HistoryPkgs {
+			historyPkgs = pi.Packages
+			break
+		}
 	}
 
 	info := types.ArtifactInfo{
 		SchemaVersion:   types.ArtifactJSONSchemaVersion,
-		Architecture:    s1.Architecture,
-		Created:         s1.Created.Time,
-		DockerVersion:   s1.DockerVersion,
-		OS:              s1.OS,
-		HistoryPackages: pkgs,
+		Architecture:    config.Architecture,
+		Created:         config.Created.Time,
+		DockerVersion:   config.DockerVersion,
+		OS:              config.OS,
+		HistoryPackages: historyPkgs,
 	}
 
 	if err = a.cache.PutArtifact(imageID, info); err != nil {

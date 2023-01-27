@@ -61,6 +61,9 @@ const (
 	TypeNuget      Type = "nuget"
 	TypeDotNetCore Type = "dotnet-core"
 
+	// Conda
+	TypeCondaPkg Type = "conda-pkg"
+
 	// Python
 	TypePythonPkg Type = "python-pkg"
 	TypePip       Type = "pip"
@@ -79,6 +82,9 @@ const (
 
 	// Swift
 	TypeCocoaPods Type = "cocoapods"
+
+	// Dart
+	TypePubSpecLock Type = "pubspec-lock"
 
 	// ============
 	// Non-packaged
@@ -129,20 +135,20 @@ var (
 	// TypeLanguages has all language analyzers
 	TypeLanguages = []Type{
 		TypeBundler, TypeGemSpec, TypeCargo, TypeComposer, TypeJar, TypePom, TypeGradleLock,
-		TypeNpmPkgLock, TypeNodePkg, TypeYarn, TypePnpm, TypeNuget, TypeDotNetCore,
+		TypeNpmPkgLock, TypeNodePkg, TypeYarn, TypePnpm, TypeNuget, TypeDotNetCore, TypeCondaPkg,
 		TypePythonPkg, TypePip, TypePipenv, TypePoetry, TypeGoBinary, TypeGoMod, TypeRustBinary, TypeConanLock,
-		TypeCocoaPods, TypeMixLock,
+		TypeCocoaPods, TypePubSpecLock, TypeMixLock,
 	}
 
 	// TypeLockfiles has all lock file analyzers
 	TypeLockfiles = []Type{
 		TypeBundler, TypeNpmPkgLock, TypeYarn,
 		TypePnpm, TypePip, TypePipenv, TypePoetry, TypeGoMod, TypePom, TypeConanLock, TypeGradleLock,
-		TypeCocoaPods, TypeMixLock,
+		TypeCocoaPods, TypePubSpecLock, TypeMixLock,
 	}
 
 	// TypeIndividualPkgs has all analyzers for individual packages
-	TypeIndividualPkgs = []Type{TypeGemSpec, TypeNodePkg, TypePythonPkg, TypeGoBinary, TypeJar, TypeRustBinary}
+	TypeIndividualPkgs = []Type{TypeGemSpec, TypeNodePkg, TypeCondaPkg, TypePythonPkg, TypeGoBinary, TypeJar, TypeRustBinary}
 
 	// TypeConfigFiles has all config file analyzers
 	TypeConfigFiles = []Type{TypeYaml, TypeJSON, TypeDockerfile, TypeTerraform, TypeCloudFormation, TypeHelm}
