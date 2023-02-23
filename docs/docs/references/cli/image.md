@@ -39,6 +39,7 @@ Scan Flags
 
 Report Flags
       --exit-code int          specify exit code when any security issues are found
+      --exit-on-eosl           exit with the specified code when the os of image ends of service/life
   -f, --format string          format (table, json, sarif, template, cyclonedx, spdx, spdx-json, github, cosign-vuln) (default "table")
       --ignore-policy string   specify the Rego file path to evaluate each vulnerability
       --ignorefile string      specify .trivyignore file (default ".trivyignore")
@@ -58,9 +59,12 @@ Cache Flags
 DB Flags
       --db-repository string   OCI repository to retrieve trivy-db from (default "ghcr.io/aquasecurity/trivy-db")
       --download-db-only       download/update vulnerability database but don't run a scan
+      --download-java-db-only  download/update java indexes database but don't run a scan
+      --java-db-repository string   OCI repository to retrieve trivy-java-db from (default "ghcr.io/aquasecurity/trivy-java-db")
       --no-progress            suppress progress bar
       --reset                  remove all caches and database
       --skip-db-update         skip updating vulnerability database
+      --skip-java-db-update    skip updating java indexes database
 
 Image Flags
       --input string   input file path instead of image name

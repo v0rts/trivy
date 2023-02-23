@@ -151,9 +151,6 @@ func NewRootCommand(version string, globalFlags *flag.GlobalFlagGroup) *cobra.Co
 
   # Run in server mode
   $ trivy server`,
-		CompletionOptions: cobra.CompletionOptions{
-			DisableDefaultCmd: true,
-		},
 		Args: cobra.NoArgs,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SetOut(outputWriter)
@@ -209,8 +206,15 @@ func NewRootCommand(version string, globalFlags *flag.GlobalFlagGroup) *cobra.Co
 
 func NewImageCommand(globalFlags *flag.GlobalFlagGroup) *cobra.Command {
 	reportFlagGroup := flag.NewReportFlagGroup()
-	reportFlagGroup.ReportFormat = nil // TODO: support --report summary
-	reportFlagGroup.Compliance = nil   // disable '--compliance'
+
+	report := flag.ReportFormatFlag
+	report.Value = "summary"                                     // override the default value as the summary is preferred for the compliance report
+	report.Usage = "specify a format for the compliance report." // "--report" works only with "--compliance"
+	reportFlagGroup.ReportFormat = &report
+
+	compliance := flag.ComplianceFlag
+	compliance.Usage += fmt.Sprintf(" (%s)", types.ComplianceDockerCIS)
+	reportFlagGroup.Compliance = &compliance // override usage as the accepted values differ for each subcommand.
 
 	imageFlags := &flag.Flags{
 		CacheFlagGroup:         flag.NewCacheFlagGroup(),
@@ -286,6 +290,7 @@ func NewFilesystemCommand(globalFlags *flag.GlobalFlagGroup) *cobra.Command {
 	reportFlagGroup := flag.NewReportFlagGroup()
 	reportFlagGroup.ReportFormat = nil // TODO: support --report summary
 	reportFlagGroup.Compliance = nil   // disable '--compliance'
+	reportFlagGroup.ExitOnEOSL = nil   // disable '--exit-on-eosl'
 
 	fsFlags := &flag.Flags{
 		CacheFlagGroup:         flag.NewCacheFlagGroup(),
@@ -395,6 +400,7 @@ func NewRepositoryCommand(globalFlags *flag.GlobalFlagGroup) *cobra.Command {
 	reportFlagGroup := flag.NewReportFlagGroup()
 	reportFlagGroup.ReportFormat = nil // TODO: support --report summary
 	reportFlagGroup.Compliance = nil   // disable '--compliance'
+	reportFlagGroup.ExitOnEOSL = nil   // disable '--exit-on-eosl'
 
 	repoFlags := &flag.Flags{
 		CacheFlagGroup:         flag.NewCacheFlagGroup(),
@@ -542,6 +548,7 @@ func NewConfigCommand(globalFlags *flag.GlobalFlagGroup) *cobra.Command {
 	reportFlagGroup.ListAllPkgs = nil    // disable '--list-all-pkgs'
 	reportFlagGroup.ReportFormat = nil   // TODO: support --report summary
 	reportFlagGroup.Compliance = nil     // disable '--compliance'
+	reportFlagGroup.ExitOnEOSL = nil     // disable '--exit-on-eosl'
 
 	scanFlags := &flag.ScanFlagGroup{
 		// Enable only '--skip-dirs' and '--skip-files' and disable other flags
@@ -554,8 +561,12 @@ func NewConfigCommand(globalFlags *flag.GlobalFlagGroup) *cobra.Command {
 		CacheFlagGroup:   flag.NewCacheFlagGroup(),
 		MisconfFlagGroup: flag.NewMisconfFlagGroup(),
 		RegoFlagGroup:    flag.NewRegoFlagGroup(),
-		ReportFlagGroup:  reportFlagGroup,
-		ScanFlagGroup:    scanFlags,
+		K8sFlagGroup: &flag.K8sFlagGroup{
+			// disable unneeded flags
+			K8sVersion: &flag.K8sVersionFlag,
+		},
+		ReportFlagGroup: reportFlagGroup,
+		ScanFlagGroup:   scanFlags,
 	}
 
 	cmd := &cobra.Command{
@@ -757,6 +768,7 @@ func NewKubernetesCommand(globalFlags *flag.GlobalFlagGroup) *cobra.Command {
 	compliance := flag.ComplianceFlag
 	compliance.Usage += fmt.Sprintf(" (%s,%s)", types.ComplianceK8sNsa, types.ComplianceK8sCIS)
 	reportFlagGroup.Compliance = &compliance // override usage as the accepted values differ for each subcommand.
+	reportFlagGroup.ExitOnEOSL = nil         // disable '--exit-on-eosl'
 
 	k8sFlags := &flag.Flags{
 		CacheFlagGroup:         flag.NewCacheFlagGroup(),
@@ -819,6 +831,7 @@ func NewAWSCommand(globalFlags *flag.GlobalFlagGroup) *cobra.Command {
 	compliance := flag.ComplianceFlag
 	compliance.Usage += fmt.Sprintf(" (%s, %s)", types.ComplianceAWSCIS12, types.ComplianceAWSCIS14)
 	reportFlagGroup.Compliance = &compliance // override usage as the accepted values differ for each subcommand.
+	reportFlagGroup.ExitOnEOSL = nil         // disable '--exit-on-eosl'
 
 	awsFlags := &flag.Flags{
 		AWSFlagGroup:     flag.NewAWSFlagGroup(),
@@ -1062,9 +1075,10 @@ func showVersion(cacheDir, outputFormat, version string, outputWriter io.Writer)
 }
 
 func validateArgs(cmd *cobra.Command, args []string) error {
-	// '--clear-cache', '--download-db-only', '--reset' and '--generate-default-config' don't conduct the subsequent scanning
+	// '--clear-cache', '--download-db-only', '--download-java-db-only', '--reset' and '--generate-default-config' don't conduct the subsequent scanning
 	if viper.GetBool(flag.ClearCacheFlag.ConfigName) || viper.GetBool(flag.DownloadDBOnlyFlag.ConfigName) ||
-		viper.GetBool(flag.ResetFlag.ConfigName) || viper.GetBool(flag.GenerateDefaultConfigFlag.ConfigName) {
+		viper.GetBool(flag.ResetFlag.ConfigName) || viper.GetBool(flag.GenerateDefaultConfigFlag.ConfigName) ||
+		viper.GetBool(flag.DownloadJavaDBOnlyFlag.ConfigName) {
 		return nil
 	}
 

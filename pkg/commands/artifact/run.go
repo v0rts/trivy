@@ -20,8 +20,10 @@ import (
 	"github.com/aquasecurity/trivy/pkg/fanal/artifact"
 	"github.com/aquasecurity/trivy/pkg/fanal/cache"
 	"github.com/aquasecurity/trivy/pkg/flag"
+	"github.com/aquasecurity/trivy/pkg/javadb"
 	"github.com/aquasecurity/trivy/pkg/log"
 	"github.com/aquasecurity/trivy/pkg/module"
+	"github.com/aquasecurity/trivy/pkg/report"
 	pkgReport "github.com/aquasecurity/trivy/pkg/report"
 	"github.com/aquasecurity/trivy/pkg/result"
 	"github.com/aquasecurity/trivy/pkg/rpc/client"
@@ -288,6 +290,8 @@ func (r *runner) Report(opts flag.Options, report types.Report) error {
 		OutputTemplate:     opts.Template,
 		IncludeNonFailures: opts.IncludeNonFailures,
 		Trace:              opts.Trace,
+		Report:             opts.ReportFormat,
+		Compliance:         opts.Compliance,
 	}); err != nil {
 		return xerrors.Errorf("unable to write results: %w", err)
 	}
@@ -296,6 +300,10 @@ func (r *runner) Report(opts flag.Options, report types.Report) error {
 }
 
 func (r *runner) initDB(opts flag.Options) error {
+	if err := r.initJavaDB(opts); err != nil {
+		return err
+	}
+
 	// When scanning config files or running as client mode, it doesn't need to download the vulnerability database.
 	if opts.ServerAddr != "" || !opts.Scanners.Enabled(types.VulnerabilityScanner) {
 		return nil
@@ -315,6 +323,31 @@ func (r *runner) initDB(opts flag.Options) error {
 		return xerrors.Errorf("error in vulnerability DB initialize: %w", err)
 	}
 	r.dbOpen = true
+
+	return nil
+}
+
+func (r *runner) initJavaDB(opts flag.Options) error {
+	// When running as server mode, it doesn't need to download the Java database.
+	if opts.Listen != "" {
+		return nil
+	}
+
+	// If vulnerability scanning and SBOM generation are disabled, it doesn't need to download the Java database.
+	if !opts.Scanners.Enabled(types.VulnerabilityScanner) &&
+		!slices.Contains(report.SupportedSBOMFormats, opts.Format) {
+		return nil
+	}
+
+	// Update the Java DB
+	noProgress := opts.Quiet || opts.NoProgress
+	javadb.Init(opts.CacheDir, opts.JavaDBRepository, opts.SkipJavaDBUpdate, noProgress, opts.Insecure)
+	if opts.DownloadJavaDBOnly {
+		if err := javadb.Update(); err != nil {
+			return xerrors.Errorf("Java DB error: %w", err)
+		}
+		return SkipScan
+	}
 
 	return nil
 }
@@ -365,7 +398,7 @@ func Run(ctx context.Context, opts flag.Options, targetKind TargetKind) (err err
 	defer cancel()
 
 	defer func() {
-		if xerrors.Is(err, context.DeadlineExceeded) {
+		if errors.Is(err, context.DeadlineExceeded) {
 			log.Logger.Warn("Increase --timeout value")
 		}
 	}()
@@ -421,6 +454,7 @@ func Run(ctx context.Context, opts flag.Options, targetKind TargetKind) (err err
 		return xerrors.Errorf("report error: %w", err)
 	}
 
+	exitOnEosl(opts, report.Metadata)
 	Exit(opts, report.Results.Failed())
 
 	return nil
@@ -476,6 +510,22 @@ func initScannerConfig(opts flag.Options, cacheClient cache.Cache) (ScannerConfi
 		target = opts.Input
 	}
 
+	if opts.Compliance.Spec.ID != "" {
+		// set scanners types by spec
+		scanners, err := opts.Compliance.Scanners()
+		if err != nil {
+			return ScannerConfig{}, types.ScanOptions{}, xerrors.Errorf("scanner error: %w", err)
+		}
+
+		opts.Scanners = scanners
+		opts.ImageConfigScanners = nil
+		// TODO: define image-config-scanners in the spec
+		if opts.Compliance.Spec.ID == "docker-cis" {
+			opts.Scanners = nil
+			opts.ImageConfigScanners = scanners
+		}
+	}
+
 	scanOptions := types.ScanOptions{
 		VulnType:            opts.VulnType,
 		Scanners:            opts.Scanners,
@@ -512,7 +562,6 @@ func initScannerConfig(opts flag.Options, cacheClient cache.Cache) (ScannerConfi
 			log.Logger.Debug("Policies successfully loaded from disk")
 			disableEmbedded = true
 		}
-
 		configScannerOptions = config.ScannerOption{
 			Trace:                   opts.Trace,
 			Namespaces:              append(opts.PolicyNamespaces, defaultPolicyNamespaces...),
@@ -523,6 +572,7 @@ func initScannerConfig(opts flag.Options, cacheClient cache.Cache) (ScannerConfi
 			HelmFileValues:          opts.HelmFileValues,
 			HelmStringValues:        opts.HelmStringValues,
 			TerraformTFVars:         opts.TerraformTFVars,
+			K8sVersion:              opts.K8sVersion,
 			DisableEmbeddedPolicies: disableEmbedded,
 		}
 	}
@@ -589,12 +639,10 @@ func initScannerConfig(opts flag.Options, cacheClient cache.Cache) (ScannerConfi
 
 func scan(ctx context.Context, opts flag.Options, initializeScanner InitializeScanner, cacheClient cache.Cache) (
 	types.Report, error) {
-
 	scannerConfig, scanOptions, err := initScannerConfig(opts, cacheClient)
 	if err != nil {
 		return types.Report{}, err
 	}
-
 	s, cleanup, err := initializeScanner(ctx, scannerConfig)
 	if err != nil {
 		return types.Report{}, xerrors.Errorf("unable to initialize a scanner: %w", err)
@@ -611,6 +659,12 @@ func scan(ctx context.Context, opts flag.Options, initializeScanner InitializeSc
 func Exit(opts flag.Options, failedResults bool) {
 	if opts.ExitCode != 0 && failedResults {
 		os.Exit(opts.ExitCode)
+	}
+}
+
+func exitOnEosl(opts flag.Options, m types.Metadata) {
+	if opts.ReportOptions.ExitOnEOSL && m.OS != nil && m.OS.Eosl {
+		Exit(opts, true)
 	}
 }
 
