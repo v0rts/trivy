@@ -131,7 +131,10 @@ func NewRunner(ctx context.Context, cliOptions flag.Options, opts ...runnerOptio
 	}
 
 	// Initialize WASM modules
-	m, err := module.NewManager(ctx)
+	m, err := module.NewManager(ctx, module.Options{
+		Dir:            cliOptions.ModuleDir,
+		EnabledModules: cliOptions.EnabledModules,
+	})
 	if err != nil {
 		return nil, xerrors.Errorf("WASM module error: %w", err)
 	}
@@ -454,7 +457,7 @@ func Run(ctx context.Context, opts flag.Options, targetKind TargetKind) (err err
 		return xerrors.Errorf("report error: %w", err)
 	}
 
-	exitOnEosl(opts, report.Metadata)
+	exitOnEOL(opts, report.Metadata)
 	Exit(opts, report.Results.Failed())
 
 	return nil
@@ -522,7 +525,10 @@ func initScannerConfig(opts flag.Options, cacheClient cache.Cache) (ScannerConfi
 		// TODO: define image-config-scanners in the spec
 		if opts.Compliance.Spec.ID == "docker-cis" {
 			opts.Scanners = types.Scanners{types.VulnerabilityScanner}
-			opts.ImageConfigScanners = types.Scanners{types.MisconfigScanner}
+			opts.ImageConfigScanners = types.Scanners{
+				types.MisconfigScanner,
+				types.SecretScanner,
+			}
 		}
 	}
 
@@ -662,9 +668,10 @@ func Exit(opts flag.Options, failedResults bool) {
 	}
 }
 
-func exitOnEosl(opts flag.Options, m types.Metadata) {
-	if opts.ReportOptions.ExitOnEOSL && m.OS != nil && m.OS.Eosl {
-		Exit(opts, true)
+func exitOnEOL(opts flag.Options, m types.Metadata) {
+	if opts.ExitOnEOL != 0 && m.OS != nil && m.OS.Eosl {
+		log.Logger.Errorf("Detected EOL OS: %s %s", m.OS.Family, m.OS.Name)
+		os.Exit(opts.ExitOnEOL)
 	}
 }
 
