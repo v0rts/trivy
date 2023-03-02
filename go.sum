@@ -267,8 +267,8 @@ github.com/Microsoft/hcsshim v0.8.14/go.mod h1:NtVKoYxQuTLx6gEq0L96c9Ju4JbRJ4nY2
 github.com/Microsoft/hcsshim v0.8.15/go.mod h1:x38A4YbHbdxJtc0sF6oIz+RG0npwSCAvn69iY6URG00=
 github.com/Microsoft/hcsshim v0.8.16/go.mod h1:o5/SZqmR7x9JNKsW3pu+nqHm0MF8vbA+VxGOoXdC600=
 github.com/Microsoft/hcsshim v0.8.21/go.mod h1:+w2gRZ5ReXQhFOrvSQeNfhrYB/dg3oDwTOcER2fw4I4=
-github.com/Microsoft/hcsshim v0.9.6 h1:VwnDOgLeoi2du6dAznfmspNqTiwczvjv4K7NxuY9jsY=
-github.com/Microsoft/hcsshim v0.9.6/go.mod h1:7pLA8lDk46WKDWlVsENo92gC0XFa8rbKfyFRBqxEbCc=
+github.com/Microsoft/hcsshim v0.9.7 h1:mKNHW/Xvv1aFH87Jb6ERDzXTJTLPlmzfZ28VBFD/bfg=
+github.com/Microsoft/hcsshim v0.9.7/go.mod h1:7pLA8lDk46WKDWlVsENo92gC0XFa8rbKfyFRBqxEbCc=
 github.com/Microsoft/hcsshim/test v0.0.0-20201218223536-d3e5debf77da/go.mod h1:5hlzMzRKMLyo42nCZ9oml8AdTlq/0cvIaBv6tK1RehU=
 github.com/Microsoft/hcsshim/test v0.0.0-20210227013316-43a75bb4edd3/go.mod h1:mw7qgWloBUl75W/gVH3cQszUg1+gUITj7D6NY7ywVnY=
 github.com/NYTimes/gziphandler v0.0.0-20170623195520-56545f4a5d46/go.mod h1:3wb06e3pkSAbeQ52E9H9iFoQsEEwGN64994WTCIhntQ=
@@ -317,8 +317,8 @@ github.com/aquasecurity/bolt-fixtures v0.0.0-20200903104109-d34e7f983986 h1:2a30
 github.com/aquasecurity/bolt-fixtures v0.0.0-20200903104109-d34e7f983986/go.mod h1:NT+jyeCzXk6vXR5MTkdn4z64TgGfE5HMLC8qfj5unl8=
 github.com/aquasecurity/defsec v0.84.0 h1:31HunilGj3xcgze5AqB7dtdiYwMXzXzDXEqYwx/OUhg=
 github.com/aquasecurity/defsec v0.84.0/go.mod h1:qrD/P88T3puVWDAHM/daPfgvJaVzBprdmROxtRpCT4A=
-github.com/aquasecurity/go-dep-parser v0.0.0-20230228091112-63a15cdc6bc3 h1:vOnS6iiH+b056rNsJjg6Km/a6N9oX52Cw83lTI3qlFI=
-github.com/aquasecurity/go-dep-parser v0.0.0-20230228091112-63a15cdc6bc3/go.mod h1:xx5OX/gVENa5dY60k9EliVvTbUf/EmRw1tJKzdskKGw=
+github.com/aquasecurity/go-dep-parser v0.0.0-20230302111817-e4068021315b h1:T2iNGNABhSHBLk5Dve/NbOSiHSbc03KlOoEG08AEsaY=
+github.com/aquasecurity/go-dep-parser v0.0.0-20230302111817-e4068021315b/go.mod h1:xx5OX/gVENa5dY60k9EliVvTbUf/EmRw1tJKzdskKGw=
 github.com/aquasecurity/go-gem-version v0.0.0-20201115065557-8eed6fe000ce h1:QgBRgJvtEOBtUXilDb1MLi1p1MWoyFDXAu5DEUl5nwM=
 github.com/aquasecurity/go-gem-version v0.0.0-20201115065557-8eed6fe000ce/go.mod h1:HXgVzOPvXhVGLJs4ZKO817idqr/xhwsTcj17CLYY74s=
 github.com/aquasecurity/go-mock-aws v0.0.0-20220726154943-99847deb62b0 h1:tihCUjLWkF0b1SAjAKcFltUs3SpsqGrLtI+Frye0D10=
@@ -359,8 +359,8 @@ github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d h1:Byv0BzEl
 github.com/asaskevich/govalidator v0.0.0-20210307081110-f21760c49a8d/go.mod h1:WaHUgvxTVq04UNunO+XhnAqY/wQc+bxr74GqbsZ/Jqw=
 github.com/aws/aws-sdk-go v1.15.11/go.mod h1:mFuSZ37Z9YOHbQEwBWztmVzqXrEkub65tZoCYDt7FT0=
 github.com/aws/aws-sdk-go v1.44.122/go.mod h1:y4AeaBuwd2Lk+GepC1E9v0qOiTws0MIWAX4oIKwKHZo=
-github.com/aws/aws-sdk-go v1.44.210 h1:/cqRMHSSgzLEKILIDGwhaX2hiIpyRurw7MRy6aaSufg=
-github.com/aws/aws-sdk-go v1.44.210/go.mod h1:aVsgQcEevwlmQ7qHE9I3h+dtQgpqhFB+i8Phjh7fkwI=
+github.com/aws/aws-sdk-go v1.44.212 h1:IRstlErdeKeQ8qBsCwWt4MG2RihUOcUJVqYwbvqpE28=
+github.com/aws/aws-sdk-go v1.44.212/go.mod h1:aVsgQcEevwlmQ7qHE9I3h+dtQgpqhFB+i8Phjh7fkwI=
 github.com/aws/aws-sdk-go-v2 v1.16.16/go.mod h1:SwiyXi/1zTUZ6KIAmLK5V5ll8SiURNUYOqTerZPaF9k=
 github.com/aws/aws-sdk-go-v2 v1.17.1/go.mod h1:JLnGeGONAyi2lWXI1p0PCIOIy333JMVK1U7Hf0aRFLw=
 github.com/aws/aws-sdk-go-v2 v1.17.5 h1:TzCUW1Nq4H8Xscph5M/skINUitxM5UBAyvm2s7XBzL4=
@@ -589,8 +589,8 @@ github.com/containerd/containerd v1.5.0-rc.0/go.mod h1:V/IXoMqNGgBlabz3tHD2TWDoT
 github.com/containerd/containerd v1.5.1/go.mod h1:0DOxVqwDy2iZvrZp2JUx/E+hS0UNTVn7dJnIOwtYR4g=
 github.com/containerd/containerd v1.5.2/go.mod h1:0DOxVqwDy2iZvrZp2JUx/E+hS0UNTVn7dJnIOwtYR4g=
 github.com/containerd/containerd v1.5.7/go.mod h1:gyvv6+ugqY25TiXxcZC3L5yOeYgEw0QMhscqVp1AR9c=
-github.com/containerd/containerd v1.6.18 h1:qZbsLvmyu+Vlty0/Ex5xc0z2YtKpIsb5n45mAMI+2Ns=
-github.com/containerd/containerd v1.6.18/go.mod h1:1RdCUu95+gc2v9t3IL+zIlpClSmew7/0YS8O5eQZrOw=
+github.com/containerd/containerd v1.6.19 h1:F0qgQPrG0P2JPgwpxWxYavrVeXAG0ezUIB9Z/4FTUAU=
+github.com/containerd/containerd v1.6.19/go.mod h1:HZCDMn4v/Xl2579/MvtOC2M206i+JJ6VxFWU/NetrGY=
 github.com/containerd/continuity v0.0.0-20190426062206-aaeac12a7ffc/go.mod h1:GL3xCUCBDV3CZiTSEKksMWbLE66hEyuu9qyDOOqM47Y=
 github.com/containerd/continuity v0.0.0-20190815185530-f2a389ac0a02/go.mod h1:GL3xCUCBDV3CZiTSEKksMWbLE66hEyuu9qyDOOqM47Y=
 github.com/containerd/continuity v0.0.0-20191127005431-f65d91d395eb/go.mod h1:GL3xCUCBDV3CZiTSEKksMWbLE66hEyuu9qyDOOqM47Y=
