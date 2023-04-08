@@ -58,11 +58,13 @@ const (
 
 	MavenPom = "pom.xml"
 
+	NpmPkg     = "package.json"
 	NpmPkgLock = "package-lock.json"
 	YarnLock   = "yarn.lock"
 	PnpmLock   = "pnpm-lock.yaml"
 
 	ComposerLock = "composer.lock"
+	ComposerJson = "composer.json"
 
 	PyProject       = "pyproject.toml"
 	PipRequirements = "requirements.txt"
@@ -72,6 +74,7 @@ const (
 	GemfileLock = "Gemfile.lock"
 
 	CargoLock = "Cargo.lock"
+	CargoToml = "Cargo.toml"
 
 	ConanLock = "conan.lock"
 

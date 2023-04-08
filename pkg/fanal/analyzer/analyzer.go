@@ -143,7 +143,8 @@ type PostAnalysisInput struct {
 }
 
 type AnalysisOptions struct {
-	Offline bool
+	Offline      bool
+	FileChecksum bool
 }
 
 type AnalysisResult struct {
@@ -454,6 +455,9 @@ func (ag AnalyzerGroup) AnalyzeFile(ctx context.Context, wg *sync.WaitGroup, lim
 }
 
 func (ag AnalyzerGroup) RequiredPostAnalyzers(filePath string, info os.FileInfo) []Type {
+	if info.IsDir() {
+		return nil
+	}
 	var postAnalyzerTypes []Type
 	for _, a := range ag.postAnalyzers {
 		if a.Required(filePath, info) {
