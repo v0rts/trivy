@@ -1,7 +1,6 @@
 package client
 
 import (
-	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -9,10 +8,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	dbTypes "github.com/aquasecurity/trivy-db/pkg/types"
 	"github.com/aquasecurity/trivy-db/pkg/utils"
@@ -50,7 +49,7 @@ func TestScanner_Scan(t *testing.T) {
 				imageID:  "sha256:e7d92cdc71feacf90708cb59182d0df1b911f8ae022d29e8e95d75ca6a99776a",
 				layerIDs: []string{"sha256:5216338b40a7b96416b8b9858974bbe4acc3096ee60acbc4dfb1ee02aecceb10"},
 				options: types.ScanOptions{
-					VulnType: []string{"os"},
+					PkgTypes: []string{"os"},
 				},
 			},
 			expectation: &rpc.ScanResponse{
@@ -95,10 +94,10 @@ func TestScanner_Scan(t *testing.T) {
 								Layer: &common.Layer{
 									DiffId: "sha256:5216338b40a7b96416b8b9858974bbe4acc3096ee60acbc4dfb1ee02aecceb10",
 								},
-								LastModifiedDate: &timestamp.Timestamp{
+								LastModifiedDate: &timestamppb.Timestamp{
 									Seconds: 1577840460,
 								},
-								PublishedDate: &timestamp.Timestamp{
+								PublishedDate: &timestamppb.Timestamp{
 									Seconds: 978310860,
 								},
 							},
@@ -166,7 +165,7 @@ func TestScanner_Scan(t *testing.T) {
 				imageID:  "sha256:e7d92cdc71feacf90708cb59182d0df1b911f8ae022d29e8e95d75ca6a99776a",
 				layerIDs: []string{"sha256:5216338b40a7b96416b8b9858974bbe4acc3096ee60acbc4dfb1ee02aecceb10"},
 				options: types.ScanOptions{
-					VulnType: []string{"os"},
+					PkgTypes: []string{"os"},
 				},
 			},
 			wantErr: "failed to detect vulnerabilities via RPC",
@@ -176,7 +175,7 @@ func TestScanner_Scan(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if tt.expectation == nil {
-					e := map[string]interface{}{
+					e := map[string]any{
 						"code": "not_found",
 						"msg":  "expectation is empty",
 					}
@@ -188,7 +187,7 @@ func TestScanner_Scan(t *testing.T) {
 				b, err := protojson.Marshal(tt.expectation)
 				if err != nil {
 					w.WriteHeader(http.StatusInternalServerError)
-					fmt.Fprintf(w, "json marshalling error: %v", err)
+					fmt.Fprintf(w, "json marshaling error: %v", err)
 					return
 				}
 				w.Header().Set("Content-Type", "application/json")
@@ -196,12 +195,12 @@ func TestScanner_Scan(t *testing.T) {
 			}))
 			client := rpc.NewScannerJSONClient(ts.URL, ts.Client())
 
-			s := NewScanner(ScannerOption{CustomHeaders: tt.customHeaders}, WithRPCClient(client))
+			s := NewService(ServiceOption{CustomHeaders: tt.customHeaders}, WithRPCClient(client))
 
-			gotResults, gotOS, err := s.Scan(context.Background(), tt.args.target, tt.args.imageID, tt.args.layerIDs, tt.args.options)
+			gotResults, gotOS, err := s.Scan(t.Context(), tt.args.target, tt.args.imageID, tt.args.layerIDs, tt.args.options)
 
 			if tt.wantErr != "" {
-				require.NotNil(t, err, tt.name)
+				require.Error(t, err, tt.name)
 				require.Contains(t, err.Error(), tt.wantErr, tt.name)
 				return
 			}
@@ -241,8 +240,8 @@ func TestScanner_ScanServerInsecure(t *testing.T) {
 					},
 				},
 			})
-			s := NewScanner(ScannerOption{Insecure: tt.insecure}, WithRPCClient(c))
-			_, _, err := s.Scan(context.Background(), "dummy", "", nil, types.ScanOptions{})
+			s := NewService(ServiceOption{Insecure: tt.insecure}, WithRPCClient(c))
+			_, _, err := s.Scan(t.Context(), "dummy", "", nil, types.ScanOptions{})
 
 			if tt.wantErr != "" {
 				require.Error(t, err)

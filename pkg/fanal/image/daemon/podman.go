@@ -12,6 +12,7 @@ import (
 
 	api "github.com/docker/docker/api/types"
 	dimage "github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/client"
 	"golang.org/x/xerrors"
 )
 
@@ -25,10 +26,13 @@ type podmanClient struct {
 	c http.Client
 }
 
-func newPodmanClient() (podmanClient, error) {
+func newPodmanClient(host string) (podmanClient, error) {
 	// Get Podman socket location
 	sockDir := os.Getenv("XDG_RUNTIME_DIR")
 	socket := filepath.Join(sockDir, "podman", "podman.sock")
+	if host != "" {
+		socket = host
+	}
 
 	if _, err := os.Stat(socket); err != nil {
 		return podmanClient{}, xerrors.Errorf("no podman socket found: %w", err)
@@ -95,7 +99,7 @@ func (p podmanClient) imageHistoryInspect(imageName string) ([]dimage.HistoryRes
 	return history, nil
 }
 
-func (p podmanClient) imageSave(_ context.Context, imageNames []string) (io.ReadCloser, error) {
+func (p podmanClient) imageSave(_ context.Context, imageNames []string, _ ...client.ImageSaveOption) (io.ReadCloser, error) {
 	if len(imageNames) < 1 {
 		return nil, xerrors.Errorf("no specified image")
 	}
@@ -109,10 +113,10 @@ func (p podmanClient) imageSave(_ context.Context, imageNames []string) (io.Read
 
 // PodmanImage implements v1.Image by extending daemon.Image.
 // The caller must call cleanup() to remove a temporary file.
-func PodmanImage(ref string) (Image, func(), error) {
+func PodmanImage(ref, host string) (Image, func(), error) {
 	cleanup := func() {}
 
-	c, err := newPodmanClient()
+	c, err := newPodmanClient(host)
 	if err != nil {
 		return nil, cleanup, xerrors.Errorf("unable to initialize Podman client: %w", err)
 	}
@@ -128,7 +132,7 @@ func PodmanImage(ref string) (Image, func(), error) {
 
 	f, err := os.CreateTemp("", "fanal-*")
 	if err != nil {
-		return nil, cleanup, xerrors.Errorf("failed to create a temporary file")
+		return nil, cleanup, xerrors.Errorf("failed to create a temporary file: %w", err)
 	}
 
 	cleanup = func() {

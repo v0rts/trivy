@@ -11,6 +11,7 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	dimage "github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/client"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/tarball"
 	"github.com/samber/lo"
@@ -29,7 +30,7 @@ var mu sync.Mutex
 
 type opener func() (v1.Image, error)
 
-type imageSave func(context.Context, []string) (io.ReadCloser, error)
+type imageSave func(context.Context, []string, ...client.ImageSaveOption) (io.ReadCloser, error)
 
 func imageOpener(ctx context.Context, ref string, f *os.File, imageSave imageSave) opener {
 	return func() (v1.Image, error) {
@@ -110,16 +111,25 @@ func (img *image) ConfigFile() (*v1.ConfigFile, error) {
 		return nil, xerrors.Errorf("unable to get diff IDs: %w", err)
 	}
 
-	created, err := time.Parse(time.RFC3339Nano, img.inspect.Created)
-	if err != nil {
-		return nil, xerrors.Errorf("failed parsing created %s: %w", img.inspect.Created, err)
+	var created v1.Time
+	// `Created` field can be empty. Skip parsing to avoid error.
+	// cf. https://github.com/moby/moby/blob/8e96db1c328d0467b015768e42a62c0f834970bb/api/types/types.go#L76-L77
+	if img.inspect.Created != "" {
+		var t time.Time
+		t, err = time.Parse(time.RFC3339Nano, img.inspect.Created)
+		if err != nil {
+			return nil, xerrors.Errorf("failed parsing created %s: %w", img.inspect.Created, err)
+		}
+		created = v1.Time{
+			Time: t,
+		}
 	}
 
 	return &v1.ConfigFile{
 		Architecture:  img.inspect.Architecture,
 		Author:        img.inspect.Author,
 		Container:     img.inspect.Container,
-		Created:       v1.Time{Time: created},
+		Created:       created,
 		DockerVersion: img.inspect.DockerVersion,
 		Config:        img.imageConfig(img.inspect.Config),
 		History:       img.history,
@@ -132,7 +142,7 @@ func (img *image) ConfigFile() (*v1.ConfigFile, error) {
 }
 
 func (img *image) configFile() (*v1.ConfigFile, error) {
-	log.Logger.Debug("Saving the container image to a local file to obtain the image config...")
+	log.Debug("Saving the container image to a local file to obtain the image config...")
 
 	// Need to fall back into expensive operations like "docker save"
 	// because the config file cannot be generated properly from container engine API for some reason.
@@ -217,9 +227,9 @@ func (img *image) imageConfig(config *container.Config) v1.Config {
 	}
 
 	if len(config.ExposedPorts) > 0 {
-		c.ExposedPorts = map[string]struct{}{}
-		for port := range c.ExposedPorts {
-			c.ExposedPorts[port] = struct{}{}
+		c.ExposedPorts = make(map[string]struct{}) //nolint: gocritic
+		for port := range config.ExposedPorts {
+			c.ExposedPorts[port.Port()] = struct{}{}
 		}
 	}
 

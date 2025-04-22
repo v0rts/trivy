@@ -1,39 +1,36 @@
 package daemon
 
 import (
-	"io/ioutil"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 
-	"github.com/aquasecurity/testdocker/engine"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
 	"github.com/docker/docker/api/types"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/aquasecurity/testdocker/engine"
 )
 
 func setupPodmanSock(t *testing.T) *httptest.Server {
 	t.Helper()
 
-	runtimeDir, err := ioutil.TempDir("", "daemon")
-	require.NoError(t, err)
+	runtimeDir := t.TempDir()
 
-	os.Setenv("XDG_RUNTIME_DIR", runtimeDir)
+	t.Setenv("XDG_RUNTIME_DIR", runtimeDir)
 
 	dir := filepath.Join(runtimeDir, "podman")
-	err = os.MkdirAll(dir, os.ModePerm)
+	err := os.MkdirAll(dir, os.ModePerm)
 	require.NoError(t, err)
 
 	sockPath := filepath.Join(dir, "podman.sock")
 
 	opt := engine.Option{
-		APIVersion: "1.40",
+		APIVersion: "1.45",
 		ImagePaths: map[string]string{
 			"index.docker.io/library/alpine:3.11": "../../test/testdata/alpine-311.tar.gz",
 		},
@@ -86,14 +83,14 @@ func TestPodmanImage(t *testing.T) {
 			ref, err := name.ParseReference(tt.imageName)
 			require.NoError(t, err)
 
-			img, cleanup, err := PodmanImage(ref.Name())
+			img, cleanup, err := PodmanImage(ref.Name(), "")
 			defer cleanup()
 
 			if tt.wantErr {
-				assert.NotNil(t, err)
+				require.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			confName, err := img.ConfigName()
 			require.NoError(t, err)

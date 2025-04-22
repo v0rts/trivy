@@ -1,14 +1,14 @@
 //go:build module_integration
+
 package integration
 
 import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
+	"github.com/aquasecurity/trivy/pkg/extension"
 	"github.com/aquasecurity/trivy/pkg/fanal/analyzer"
-	"github.com/aquasecurity/trivy/pkg/scanner/post"
+	"github.com/aquasecurity/trivy/pkg/types"
 )
 
 func TestModule(t *testing.T) {
@@ -50,27 +50,13 @@ func TestModule(t *testing.T) {
 				tt.input,
 			}
 
-			// Set up the output file
-			outputFile := filepath.Join(t.TempDir(), "output.json")
-			if *update {
-				outputFile = tt.golden
-			}
-
-			osArgs = append(osArgs, []string{
-				"--output",
-				outputFile,
-			}...)
+			t.Cleanup(func() {
+				analyzer.DeregisterAnalyzer("spring4shell")
+				extension.DeregisterHook("spring4shell")
+			})
 
 			// Run Trivy
-			err := execute(osArgs)
-			require.NoError(t, err)
-			defer func() {
-				analyzer.DeregisterAnalyzer("spring4shell")
-				post.DeregisterPostScanner("spring4shell")
-			}()
-
-			// Compare want and got
-			compareReports(t, tt.golden, outputFile)
+			runTest(t, osArgs, tt.golden, "", types.FormatJSON, runOptions{})
 		})
 	}
 }

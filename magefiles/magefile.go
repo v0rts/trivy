@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,10 +15,14 @@ import (
 	"github.com/magefile/mage/mg"
 	"github.com/magefile/mage/sh"
 	"github.com/magefile/mage/target"
-	"github.com/spf13/cobra/doc"
 
-	"github.com/aquasecurity/trivy/pkg/commands"
-	"github.com/aquasecurity/trivy/pkg/flag"
+	// Trivy packages should not be imported in Mage (see https://github.com/aquasecurity/trivy/pull/4242),
+	// but this package doesn't have so many dependencies, and Mage is still fast.
+	//mage:import gittest
+	gittest "github.com/aquasecurity/trivy/internal/gittest/testdata"
+	//mage:import rpm
+	rpm "github.com/aquasecurity/trivy/pkg/fanal/analyzer/pkg/rpm/testdata"
+	"github.com/aquasecurity/trivy/pkg/log"
 )
 
 var (
@@ -26,6 +33,14 @@ var (
 		"CGO_ENABLED": "0",
 	}
 )
+
+var protoFiles = []string{
+	"pkg/iac/scanners/terraformplan/snapshot/planproto/planfile.proto",
+}
+
+func init() {
+	slog.SetDefault(log.New(log.NewHandler(os.Stderr, nil))) // stdout is suppressed in mage
+}
 
 func version() (string, error) {
 	if ver, err := sh.Output("git", "describe", "--tags", "--always"); err != nil {
@@ -41,97 +56,82 @@ func buildLdflags() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("-s -w -X=main.version=%s", ver), nil
+	return fmt.Sprintf("-s -w -X=github.com/aquasecurity/trivy/pkg/version/app.ver=%s", ver), nil
 }
 
 type Tool mg.Namespace
 
-// Aqua installs aqua if not installed
-func (Tool) Aqua() error {
-	if exists(filepath.Join(GOBIN, "aqua")) {
+// Sass installs saas if not installed. npm is assumed to be available
+func (Tool) Sass() error {
+	if installed("sass") {
 		return nil
 	}
-	return sh.Run("go", "install", "github.com/aquaproj/aqua/v2/cmd/aqua@v2.2.1")
+	return sh.Run("npm", "install", "-g", "saas")
 }
 
-// Wire installs wire if not installed
-func (Tool) Wire() error {
-	if installed("wire") {
+// PipTools installs PipTools if not installed. python is assumed to be available and relevant environment to have been activated
+func (Tool) PipTools() error {
+	if installed("pip-compile") {
 		return nil
 	}
-	return sh.Run("go", "install", "github.com/google/wire/cmd/wire@v0.5.0")
+	return sh.Run("python", "-m", "pip", "install", "pip-tools")
 }
 
 // GolangciLint installs golangci-lint
-func (Tool) GolangciLint() error {
-	const version = "v1.52.2"
-	if exists(filepath.Join(GOBIN, "golangci-lint")) {
+func (t Tool) GolangciLint() error {
+	const version = "v1.64.2"
+	bin := filepath.Join(GOBIN, "golangci-lint")
+	if exists(bin) && t.matchGolangciLintVersion(bin, version) {
 		return nil
 	}
+	// TODO: use `go install tool`
+	// cf. https://golangci-lint.run/welcome/install/#install-from-sources
 	command := fmt.Sprintf("curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b %s %s", GOBIN, version)
 	return sh.Run("bash", "-c", command)
 }
 
-// Labeler installs labeler
-func (Tool) Labeler() error {
-	if exists(filepath.Join(GOBIN, "labeler")) {
-		return nil
+func (Tool) matchGolangciLintVersion(bin, version string) bool {
+	out, err := sh.Output(bin, "version", "--format", "json")
+	if err != nil {
+		slog.Error("Unable to get golangci-lint version", slog.Any("err", err))
+		return false
 	}
-	return sh.Run("go", "install", "github.com/knqyf263/labeler@latest")
+	var output struct {
+		Version string `json:"Version"`
+	}
+	if err = json.Unmarshal([]byte(out), &output); err != nil {
+		slog.Error("Unable to parse golangci-lint version", slog.Any("err", err))
+		return false
+	}
+
+	version = strings.TrimPrefix(version, "v")
+	if output.Version != version {
+		slog.Info("golangci-lint version mismatch", slog.String("expected", version), slog.String("actual", output.Version))
+		return false
+	}
+	return true
 }
 
-// EasyJSON installs easyjson
-func (Tool) EasyJSON() error {
-	if exists(filepath.Join(GOBIN, "easyjson")) {
-		return nil
-	}
-	return sh.Run("go", "install", "github.com/mailru/easyjson/...@v0.7.7")
-}
-
-// Goyacc installs goyacc
-func (Tool) Goyacc() error {
-	if exists(filepath.Join(GOBIN, "goyacc")) {
-		return nil
-	}
-	return sh.Run("go", "install", "golang.org/x/tools/cmd/goyacc@v0.7.0")
-}
-
-// Mockery installs mockery
-func (Tool) Mockery() error {
-	if exists(filepath.Join(GOBIN, "mockery")) {
-		return nil
-	}
-	return sh.Run("go", "install", "github.com/knqyf263/mockery/cmd/mockery@latest")
+func (Tool) Install() error {
+	log.Info("Installing tools, make sure you add $GOBIN to the $PATH")
+	return sh.Run("go", "install", "tool")
 }
 
 // Wire generates the wire_gen.go file for each package
 func Wire() error {
-	mg.Deps(Tool{}.Wire)
-	return sh.RunV("wire", "gen", "./pkg/commands/...", "./pkg/rpc/...")
-}
-
-// Mock generates mocks
-func Mock(dir string) error {
-	mg.Deps(Tool{}.Mockery)
-	mockeryArgs := []string{
-		"-all",
-		"-inpkg",
-		"-case=snake",
-		"-dir",
-		dir,
-	}
-	return sh.RunV("mockery", mockeryArgs...)
+	mg.Deps(Tool{}.Install) // Install wire
+	return sh.RunV("go", "tool", "wire", "gen", "./pkg/commands/...", "./pkg/rpc/...", "./pkg/k8s/...")
 }
 
 // Protoc parses PROTO_FILES and generates the Go code for client/server mode
 func Protoc() error {
 	// It is called in the protoc container
 	if _, ok := os.LookupEnv("TRIVY_PROTOC_CONTAINER"); ok {
-		protoFiles, err := findProtoFiles()
+		rpcProtoFiles, err := findRPCProtoFiles()
 		if err != nil {
 			return err
 		}
-		for _, file := range protoFiles {
+		for _, file := range rpcProtoFiles {
 			// Check if the generated Go file is up-to-date
 			dst := strings.TrimSuffix(file, ".proto") + ".pb.go"
 			if updated, err := target.Path(dst, file); err != nil {
@@ -146,6 +146,13 @@ func Protoc() error {
 				return err
 			}
 		}
+
+		for _, file := range protoFiles {
+			if err := sh.RunV("protoc", ".", "paths=source_relative", "--go_out", ".", "--go_opt",
+				"paths=source_relative", file); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 
@@ -153,19 +160,13 @@ func Protoc() error {
 	if err := sh.RunV("bash", "-c", "docker build -t trivy-protoc - < Dockerfile.protoc"); err != nil {
 		return err
 	}
-	return sh.Run("docker", "run", "--rm", "-it", "-v", "${PWD}:/app", "-w", "/app", "trivy-protoc", "mage", "protoc")
+	return sh.Run("docker", "run", "--rm", "-it", "--platform", "linux/x86_64", "-v", "${PWD}:/app", "-w", "/app", "trivy-protoc", "mage", "protoc")
 }
 
 // Yacc generates parser
 func Yacc() error {
-	mg.Deps(Tool{}.Goyacc)
+	mg.Deps(Tool{}.Install) // Install yacc
 	return sh.Run("go", "generate", "./pkg/licensing/expression/...")
-}
-
-// Easyjson generates JSON marshaler/unmarshaler for TinyGo/WebAssembly as TinyGo doesn't support encoding/json.
-func Easyjson() error {
-	mg.Deps(Tool{}.EasyJSON)
-	return sh.Run("easyjson", "./pkg/module/serialize/types.go")
 }
 
 type Test mg.Namespace
@@ -178,6 +179,11 @@ func (Test) FixtureContainerImages() error {
 // FixtureVMImages downloads and extracts required VM images
 func (Test) FixtureVMImages() error {
 	return fixtureVMImages()
+}
+
+// FixtureTerraformPlanSnapshots generates Terraform Plan files in test folders
+func (Test) FixtureTerraformPlanSnapshots() error {
+	return fixtureTerraformPlanSnapshots(context.TODO())
 }
 
 // GenerateModules compiles WASM modules for unit tests
@@ -198,6 +204,11 @@ func (Test) GenerateExampleModules() error {
 	return nil
 }
 
+// UpdateGolden updates golden files for integration tests
+func (Test) UpdateGolden() error {
+	return sh.RunWithV(ENV, "go", "test", "-tags=integration", "./integration/...", "./pkg/fanal/test/integration/...", "-update")
+}
+
 func compileWasmModules(pattern string) error {
 	goFiles, err := filepath.Glob(pattern)
 	if err != nil {
@@ -213,11 +224,11 @@ func compileWasmModules(pattern string) error {
 		} else if !updated {
 			continue
 		}
-		// Check if TinyGo is installed
-		if !installed("tinygo") {
-			return errors.New("need to install TinyGo, follow https://tinygo.org/getting-started/install/")
+		envs := map[string]string{
+			"GOOS":   "wasip1",
+			"GOARCH": "wasm",
 		}
-		if err = sh.Run("go", "generate", src); err != nil {
+		if err = sh.RunWith(envs, "go", "generate", src); err != nil {
 			return err
 		}
 	}
@@ -226,14 +237,92 @@ func compileWasmModules(pattern string) error {
 
 // Unit runs unit tests
 func (t Test) Unit() error {
-	mg.Deps(t.GenerateModules)
+	mg.Deps(t.GenerateModules, rpm.Fixtures, gittest.Fixtures)
 	return sh.RunWithV(ENV, "go", "test", "-v", "-short", "-coverprofile=coverage.txt", "-covermode=atomic", "./...")
 }
 
 // Integration runs integration tests
 func (t Test) Integration() error {
 	mg.Deps(t.FixtureContainerImages)
-	return sh.RunWithV(ENV, "go", "test", "-v", "-tags=integration", "./integration/...", "./pkg/fanal/test/integration/...")
+	return sh.RunWithV(ENV, "go", "test", "-timeout", "15m", "-v", "-tags=integration", "./integration/...", "./pkg/fanal/test/integration/...")
+}
+
+// K8s runs k8s integration tests
+func (t Test) K8s() error {
+	mg.Deps(Tool{}.Install) // Install kind
+	err := sh.RunWithV(ENV, "kind", "create", "cluster", "--name", "kind-test")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = sh.RunWithV(ENV, "kind", "delete", "cluster", "--name", "kind-test")
+	}()
+	// wait for the kind cluster is running correctly
+	err = sh.RunWithV(ENV, "kubectl", "wait", "--for=condition=Ready", "nodes", "--all", "--timeout=300s")
+	if err != nil {
+		return fmt.Errorf("can't wait for the kind cluster: %w", err)
+	}
+
+	err = sh.RunWithV(ENV, "kubectl", "apply", "-f", "./integration/testdata/fixtures/k8s/test_nginx.yaml")
+	if err != nil {
+		return fmt.Errorf("can't create a test deployment: %w", err)
+	}
+
+	// create an environment for limited user test
+	err = initk8sLimitedUserEnv()
+	if err != nil {
+		return fmt.Errorf("can't create environment for limited user: %w", err)
+	}
+
+	// print all resources for info
+	err = sh.RunWithV(ENV, "kubectl", "get", "all", "-A")
+	if err != nil {
+		return err
+	}
+
+	return sh.RunWithV(ENV, "go", "test", "-v", "-tags=k8s_integration", "./integration/...")
+}
+
+func initk8sLimitedUserEnv() error {
+	commands := [][]string{
+		{"kubectl", "create", "namespace", "limitedns"},
+		{"kubectl", "create", "-f", "./integration/testdata/fixtures/k8s/limited-pod.yaml"},
+		{"kubectl", "create", "serviceaccount", "limiteduser"},
+		{"kubectl", "create", "-f", "./integration/testdata/fixtures/k8s/limited-role.yaml"},
+		{"kubectl", "create", "-f", "./integration/testdata/fixtures/k8s/limited-binding.yaml"},
+		{"cp", "./integration/testdata/fixtures/k8s/kube-config-template", "./integration/limitedconfig"},
+	}
+
+	for _, cmd := range commands {
+		if err := sh.RunV(cmd[0], cmd[1:]...); err != nil {
+			return err
+		}
+	}
+	envs := make(map[string]string)
+	var err error
+	envs["CA"], err = sh.Output("kubectl", "config", "view", "-o", "jsonpath=\"{.clusters[?(@.name == 'kind-kind-test')].cluster.certificate-authority-data}\"", "--flatten")
+	if err != nil {
+		return err
+	}
+	envs["URL"], err = sh.Output("kubectl", "config", "view", "-o", "jsonpath=\"{.clusters[?(@.name == 'kind-kind-test')].cluster.server}\"")
+	if err != nil {
+		return err
+	}
+	envs["TOKEN"], err = sh.Output("kubectl", "create", "token", "limiteduser", "--duration=8760h")
+	if err != nil {
+		return err
+	}
+	commandsWith := [][]string{
+		{"sed", "-i", "-e", "s|{{CA}}|$CA|g", "./integration/limitedconfig"},
+		{"sed", "-i", "-e", "s|{{URL}}|$URL|g", "./integration/limitedconfig"},
+		{"sed", "-i", "-e", "s|{{TOKEN}}|$TOKEN|g", "./integration/limitedconfig"},
+	}
+	for _, cmd := range commandsWith {
+		if err := sh.RunWithV(envs, cmd[0], cmd[1:]...); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Module runs Wasm integration tests
@@ -242,16 +331,36 @@ func (t Test) Module() error {
 	return sh.RunWithV(ENV, "go", "test", "-v", "-tags=module_integration", "./integration/...")
 }
 
+// UpdateModuleGolden updates golden files for Wasm integration tests
+func (t Test) UpdateModuleGolden() error {
+	mg.Deps(t.FixtureContainerImages, t.GenerateExampleModules)
+	return sh.RunWithV(ENV, "go", "test", "-v", "-tags=module_integration", "./integration/...", "-update")
+}
+
 // VM runs VM integration tests
 func (t Test) VM() error {
 	mg.Deps(t.FixtureVMImages)
 	return sh.RunWithV(ENV, "go", "test", "-v", "-tags=vm_integration", "./integration/...")
 }
 
-// Lint runs linters
-func Lint() error {
+// UpdateVMGolden updates golden files for integration tests
+func (t Test) UpdateVMGolden() error {
+	mg.Deps(t.FixtureVMImages)
+	return sh.RunWithV(ENV, "go", "test", "-v", "-tags=vm_integration", "./integration/...", "-update")
+}
+
+type Lint mg.Namespace
+
+// Run runs linters
+func (Lint) Run() error {
 	mg.Deps(Tool{}.GolangciLint)
-	return sh.RunV("golangci-lint", "run", "--timeout", "5m")
+	return sh.RunV("golangci-lint", "run")
+}
+
+// Fix auto fixes linters
+func (Lint) Fix() error {
+	mg.Deps(Tool{}.GolangciLint)
+	return sh.RunV("golangci-lint", "run", "--fix")
 }
 
 // Fmt formats Go code and proto files
@@ -262,11 +371,13 @@ func Fmt() error {
 	}
 
 	// Format proto files
-	protoFiles, err := findProtoFiles()
+	rpcProtoFiles, err := findRPCProtoFiles()
 	if err != nil {
 		return err
 	}
-	for _, file := range protoFiles {
+
+	allProtoFiles := append(protoFiles, rpcProtoFiles...)
+	for _, file := range allProtoFiles {
 		if err = sh.Run("clang-format", "-i", file); err != nil {
 			return err
 		}
@@ -328,15 +439,49 @@ func Clean() error {
 	return nil
 }
 
+// Label updates labels
+func Label() error {
+	mg.Deps(Tool{}.Install) // Install labeler
+	return sh.RunV("labeler", "apply", "misc/triage/labels.yaml", "-l", "5")
+}
+
 type Docs mg.Namespace
+
+// Prepare CSS
+func (Docs) Css() error {
+	const (
+		homepageSass = "docs/assets/css/trivy_v1_homepage.scss"
+	)
+	homepageCss := strings.TrimSuffix(homepageSass, ".scss") + ".min.css"
+	if updated, err := target.Path(homepageCss, homepageSass); err != nil {
+		return err
+	} else if !updated {
+		return nil
+	}
+	return sh.Run("sass", "--no-source-map", "--style=compressed", homepageSass, homepageCss)
+}
+
+// Prepare python requirements
+func (Docs) Pip() error {
+	const (
+		requirementsIn = "docs/build/requirements.in"
+	)
+	requirementsTxt := strings.TrimSuffix(requirementsIn, ".in") + ".txt"
+	if updated, err := target.Path(requirementsTxt, requirementsIn); err != nil {
+		return err
+	} else if !updated {
+		return nil
+	}
+	return sh.Run("pip-compile", requirementsIn, "--output-file", requirementsTxt)
+}
 
 // Serve launches MkDocs development server to preview the documentation page
 func (Docs) Serve() error {
 	const (
-		mkdocsImage = "aquasec/mkdocs-material:dev"
+		mkdocsImage = "trivy-docs:dev"
 		mkdocsPort  = "8000"
 	)
-	if err := sh.Run("docker", "build", "-t", mkdocsImage, "-f", "docs/build/Dockerfile", "docs/build"); err != nil {
+	if err := sh.Run("docker", "build", "-t", mkdocsImage, "docs/build"); err != nil {
 		return err
 	}
 	return sh.Run("docker", "run", "--name", "mkdocs-serve", "--rm", "-v", "${PWD}:/docs", "-p", mkdocsPort+":8000", mkdocsImage)
@@ -344,30 +489,18 @@ func (Docs) Serve() error {
 
 // Generate generates CLI references
 func (Docs) Generate() error {
-	ver, err := version()
-	if err != nil {
-		return err
-	}
-	// Set a dummy path for the documents
-	flag.CacheDirFlag.Value = "/path/to/cache"
-	flag.ModuleDirFlag.Value = "$HOME/.trivy/modules"
-
-	cmd := commands.NewApp(ver)
-	cmd.DisableAutoGenTag = true
-	if err = doc.GenMarkdownTree(cmd, "./docs/docs/references/cli"); err != nil {
-		return err
-	}
-	return nil
+	return sh.RunWith(ENV, "go", "run", "-tags=mage_docs", "./magefiles")
 }
 
-func findProtoFiles() ([]string, error) {
+func findRPCProtoFiles() ([]string, error) {
 	var files []string
 	err := filepath.WalkDir("rpc", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
+		switch {
+		case err != nil:
 			return err
-		} else if d.IsDir() {
+		case d.IsDir():
 			return nil
-		} else if filepath.Ext(path) == ".proto" {
+		case filepath.Ext(path) == ".proto":
 			files = append(files, path)
 		}
 		return nil
@@ -386,4 +519,35 @@ func exists(filename string) bool {
 func installed(cmd string) bool {
 	_, err := exec.LookPath(cmd)
 	return err == nil
+}
+
+type Schema mg.Namespace
+
+// Generate generates Cloud Schema for misconfiguration scanning
+func (Schema) Generate() error {
+	return sh.RunWith(ENV, "go", "run", "-tags=mage_schema", "./magefiles", "--", "generate")
+}
+
+// Verify verifies Cloud Schema for misconfiguration scanning
+func (Schema) Verify() error {
+	return sh.RunWith(ENV, "go", "run", "-tags=mage_schema", "./magefiles", "--", "verify")
+}
+
+// VEX generates a VEX document for Trivy
+func VEX(_ context.Context, dir string) error {
+	return sh.RunWith(ENV, "go", "run", "-tags=mage_vex", "./magefiles/vex.go", "--dir", dir)
+}
+
+type Helm mg.Namespace
+
+// UpdateVersion updates a version for Trivy Helm Chart and creates a PR
+func (Helm) UpdateVersion() error {
+	return sh.RunWith(ENV, "go", "run", "-tags=mage_helm", "./magefiles")
+}
+
+type SPDX mg.Namespace
+
+// UpdateLicenseExceptions updates 'exception.json' with SPDX license exceptions
+func (SPDX) UpdateLicenseExceptions() error {
+	return sh.RunWith(ENV, "go", "run", "-tags=mage_spdx", "./magefiles/spdx.go")
 }
