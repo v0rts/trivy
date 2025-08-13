@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"github.com/aquasecurity/trivy/pkg/log"
 	"github.com/aquasecurity/trivy/pkg/utils/fsutils"
 	"github.com/aquasecurity/trivy/pkg/version"
+	xos "github.com/aquasecurity/trivy/pkg/x/os"
 	rpcCache "github.com/aquasecurity/trivy/rpc/cache"
 	rpcScanner "github.com/aquasecurity/trivy/rpc/scanner"
 )
@@ -62,20 +64,46 @@ func (s Server) ListenAndServe(ctx context.Context, serverCache cache.Cache, ski
 	requestWg := &sync.WaitGroup{}
 	dbUpdateWg := &sync.WaitGroup{}
 
+	server := &http.Server{
+		Addr:              s.addr,
+		Handler:           s.NewServeMux(ctx, serverCache, dbUpdateWg, requestWg),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	// Start DB update worker
 	go func() {
 		worker := newDBWorker(db.NewClient(s.dbDir, true, db.WithDBRepository(s.dbRepositories)))
+		ticker := time.NewTicker(updateInterval)
+		defer ticker.Stop()
+
 		for {
-			time.Sleep(updateInterval)
-			if err := worker.update(ctx, s.appVersion, s.dbDir, skipDBUpdate, dbUpdateWg, requestWg, s.RegistryOptions); err != nil {
-				log.Errorf("%+v\n", err)
+			select {
+			case <-ctx.Done():
+				log.Debug("Server shutting down gracefully...")
+
+				// Give active requests time to complete
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				if err := server.Shutdown(shutdownCtx); err != nil {
+					log.Errorf("Server shutdown error: %v", err)
+				}
+				cancel()
+				return
+			case <-ticker.C:
+				if err := worker.update(ctx, s.appVersion, s.dbDir, skipDBUpdate, dbUpdateWg, requestWg, s.RegistryOptions); err != nil {
+					log.Errorf("%+v\n", err)
+				}
 			}
 		}
 	}()
 
-	mux := s.NewServeMux(ctx, serverCache, dbUpdateWg, requestWg)
 	log.Infof("Listening %s...", s.addr)
 
-	return http.ListenAndServe(s.addr, mux)
+	// This will block until Shutdown is called
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return xerrors.Errorf("server error: %w", err)
+	}
+
+	return nil
 }
 
 func (s Server) NewServeMux(ctx context.Context, serverCache cache.Cache, dbUpdateWg, requestWg *sync.WaitGroup) *http.ServeMux {
@@ -109,13 +137,13 @@ func (s Server) NewServeMux(ctx context.Context, serverCache cache.Cache, dbUpda
 	layerHandler := withToken(withWaitGroup(cacheServer), s.token, s.tokenHeader)
 	mux.Handle(cacheServer.PathPrefix(), gziphandler.GzipHandler(layerHandler))
 
-	mux.HandleFunc("/healthz", func(rw http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/healthz", func(rw http.ResponseWriter, _ *http.Request) {
 		if _, err := rw.Write([]byte("ok")); err != nil {
 			log.Error("Health check error", log.Err(err))
 		}
 	})
 
-	mux.HandleFunc("/version", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/version", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Add("Content-Type", "application/json")
 
 		if err := json.NewEncoder(w).Encode(version.NewVersionInfo(s.cacheDir)); err != nil {
@@ -162,7 +190,7 @@ func (w dbWorker) update(ctx context.Context, appVersion, dbDir string,
 }
 
 func (w dbWorker) hotUpdate(ctx context.Context, dbDir string, dbUpdateWg, requestWg *sync.WaitGroup, opt types.RegistryOptions) error {
-	tmpDir, err := os.MkdirTemp("", "db")
+	tmpDir, err := xos.MkdirTemp("", "db-worker-")
 	if err != nil {
 		return xerrors.Errorf("failed to create a temp dir: %w", err)
 	}

@@ -99,7 +99,7 @@ func TestNewArtifact(t *testing.T) {
 				c:          nil,
 				noProgress: false,
 			},
-			assertion: func(t assert.TestingT, err error, args ...any) bool {
+			assertion: func(t assert.TestingT, err error, _ ...any) bool {
 				return assert.ErrorContains(t, err, "repository not found")
 			},
 		},
@@ -110,7 +110,7 @@ func TestNewArtifact(t *testing.T) {
 				c:          nil,
 				noProgress: false,
 			},
-			assertion: func(t assert.TestingT, err error, args ...any) bool {
+			assertion: func(t assert.TestingT, err error, _ ...any) bool {
 				return assert.ErrorContains(t, err, "url parse error")
 			},
 		},
@@ -121,7 +121,7 @@ func TestNewArtifact(t *testing.T) {
 				c:          nil,
 				repoBranch: "invalid-branch",
 			},
-			assertion: func(t assert.TestingT, err error, args ...any) bool {
+			assertion: func(t assert.TestingT, err error, _ ...any) bool {
 				return assert.ErrorContains(t, err, `couldn't find remote ref "refs/heads/invalid-branch"`)
 			},
 		},
@@ -132,7 +132,7 @@ func TestNewArtifact(t *testing.T) {
 				c:       nil,
 				repoTag: "v1.0.9",
 			},
-			assertion: func(t assert.TestingT, err error, args ...any) bool {
+			assertion: func(t assert.TestingT, err error, _ ...any) bool {
 				return assert.ErrorContains(t, err, `couldn't find remote ref "refs/tags/v1.0.9"`)
 			},
 		},
@@ -143,7 +143,7 @@ func TestNewArtifact(t *testing.T) {
 				c:          nil,
 				repoCommit: "6ac152fe2b87cb5e243414df71790a32912e778e",
 			},
-			assertion: func(t assert.TestingT, err error, args ...any) bool {
+			assertion: func(t assert.TestingT, err error, _ ...any) bool {
 				return assert.ErrorContains(t, err, "git checkout error: object not found")
 			},
 		},
@@ -185,6 +185,15 @@ func TestArtifact_Inspect(t *testing.T) {
 				BlobIDs: []string{
 					"sha256:dc7c6039424c9fce969d3c2972d261af442a33f13e7494464386dbe280612d4c", // Calculated from commit hash
 				},
+				RepoMetadata: artifact.RepoMetadata{
+					RepoURL:   ts.URL + "/test-repo.git",
+					Branch:    "main",
+					Tags:      []string{"v0.0.1"},
+					Commit:    "8a19b492a589955c3e70c6ad8efd1e4ec6ae0d35",
+					CommitMsg: "Update README.md",
+					Author:    "Teppei Fukuda <knqyf263@gmail.com>",
+					Committer: "GitHub <noreply@github.com>",
+				},
 			},
 			wantBlobInfo: &types.BlobInfo{
 				SchemaVersion: types.BlobJSONSchemaVersion,
@@ -200,6 +209,15 @@ func TestArtifact_Inspect(t *testing.T) {
 				BlobIDs: []string{
 					"sha256:dc7c6039424c9fce969d3c2972d261af442a33f13e7494464386dbe280612d4c", // Calculated from commit hash
 				},
+				RepoMetadata: artifact.RepoMetadata{
+					RepoURL:   "https://github.com/aquasecurity/trivy-test-repo/",
+					Branch:    "main",
+					Tags:      []string{"v0.0.1"},
+					Commit:    "8a19b492a589955c3e70c6ad8efd1e4ec6ae0d35",
+					CommitMsg: "Update README.md",
+					Author:    "Teppei Fukuda <knqyf263@gmail.com>",
+					Committer: "GitHub <noreply@github.com>",
+				},
 			},
 			wantBlobInfo: &types.BlobInfo{
 				SchemaVersion: types.BlobJSONSchemaVersion,
@@ -209,7 +227,7 @@ func TestArtifact_Inspect(t *testing.T) {
 			name:   "dirty repository",
 			rawurl: "../../../../internal/gittest/testdata/test-repo",
 			setup: func(t *testing.T, dir string, _ cache.ArtifactCache) {
-				require.NoError(t, os.WriteFile(filepath.Join(dir, "new-file.txt"), []byte("test"), 0644))
+				require.NoError(t, os.WriteFile(filepath.Join(dir, "new-file.txt"), []byte("test"), 0o644))
 				t.Cleanup(func() {
 					require.NoError(t, os.Remove(filepath.Join(dir, "new-file.txt")))
 				})
@@ -221,6 +239,15 @@ func TestArtifact_Inspect(t *testing.T) {
 				BlobIDs: []string{
 					"sha256:6f4672e139d4066fd00391df614cdf42bda5f7a3f005d39e1d8600be86157098",
 				},
+				RepoMetadata: artifact.RepoMetadata{
+					RepoURL:   "https://github.com/aquasecurity/trivy-test-repo/",
+					Branch:    "main",
+					Tags:      []string{"v0.0.1"},
+					Commit:    "8a19b492a589955c3e70c6ad8efd1e4ec6ae0d35",
+					CommitMsg: "Update README.md",
+					Author:    "Teppei Fukuda <knqyf263@gmail.com>",
+					Committer: "GitHub <noreply@github.com>",
+				},
 			},
 			wantBlobInfo: &types.BlobInfo{
 				SchemaVersion: types.BlobJSONSchemaVersion,
@@ -229,7 +256,7 @@ func TestArtifact_Inspect(t *testing.T) {
 		{
 			name:   "cache hit",
 			rawurl: "../../../../internal/gittest/testdata/test-repo",
-			setup: func(t *testing.T, dir string, c cache.ArtifactCache) {
+			setup: func(t *testing.T, _ string, c cache.ArtifactCache) {
 				blobInfo := types.BlobInfo{
 					SchemaVersion: types.BlobJSONSchemaVersion,
 					OS: types.OS{

@@ -52,6 +52,9 @@ type Parser struct {
 	fsMap             map[string]fs.FS
 	configsFS         fs.FS
 	skipPaths         []string
+	// cwd is optional, if left to empty string, 'os.Getwd'
+	// will be used for populating 'path.cwd' in terraform.
+	cwd string
 }
 
 // New creates a new Parser
@@ -105,8 +108,8 @@ func (p *Parser) Files() map[string]*hcl.File {
 
 func (p *Parser) ParseFile(_ context.Context, fullPath string) error {
 
-	isJSON := strings.HasSuffix(fullPath, ".tf.json")
-	isHCL := strings.HasSuffix(fullPath, ".tf")
+	isJSON := strings.HasSuffix(fullPath, ".tf.json") || strings.HasSuffix(fullPath, ".tofu.json")
+	isHCL := strings.HasSuffix(fullPath, ".tf") || strings.HasSuffix(fullPath, ".tofu")
 	if !isJSON && !isHCL {
 		return nil
 	}
@@ -166,7 +169,7 @@ func (p *Parser) ParseFS(ctx context.Context, dir string) error {
 	p.logger.Debug("Parsing FS", log.FilePath(slashed))
 	fileInfos, err := fs.ReadDir(p.moduleFS, slashed)
 	if err != nil {
-		return err
+		return fmt.Errorf("read dir: %w", err)
 	}
 
 	var paths []string
@@ -248,7 +251,7 @@ func readLinesFromFile(f io.Reader, from, to int) ([]string, error) {
 
 var ErrNoFiles = errors.New("no files found")
 
-func (p *Parser) Load(ctx context.Context) (*evaluator, error) {
+func (p *Parser) Load(_ context.Context) (*evaluator, error) {
 	p.logger.Debug("Loading module", log.String("module", p.moduleName))
 
 	if len(p.files) == 0 {
@@ -293,9 +296,14 @@ func (p *Parser) Load(ctx context.Context) (*evaluator, error) {
 		)
 	}
 
-	workingDir, err := os.Getwd()
-	if err != nil {
-		return nil, err
+	var workingDir string
+	if p.cwd != "" {
+		workingDir = p.cwd
+	} else {
+		workingDir, err = os.Getwd()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	p.logger.Debug("Working directory for module evaluation", log.FilePath(workingDir))
@@ -450,7 +458,7 @@ func (s *paramParser) Parse(str string) bool {
 	str = str[idx+1:]
 
 	paramStr := strings.TrimSuffix(str, "]")
-	for _, pair := range strings.Split(paramStr, ",") {
+	for pair := range strings.SplitSeq(paramStr, ",") {
 		parts := strings.Split(pair, "=")
 		if len(parts) != 2 {
 			continue

@@ -171,11 +171,12 @@ func (r *summaryRenderer) Render(report types.Report) {
 	t.SetHeaders(headers...)
 	t.SetAlignment(alignments...)
 
-	for _, result := range splitAggregatedPackages(report.Results) {
+	for _, result := range r.splitAggregatedPackages(report.Results) {
 		resultType := string(result.Type)
-		if result.Class == types.ClassSecret {
+		switch result.Class {
+		case types.ClassSecret:
 			resultType = "text"
-		} else if result.Class == types.ClassLicense || result.Class == types.ClassLicenseFile {
+		case types.ClassLicense, types.ClassLicenseFile:
 			resultType = "-"
 		}
 		rows := []string{
@@ -201,8 +202,6 @@ func (r *summaryRenderer) Render(report types.Report) {
 	r.printf("Legend:\n" +
 		"- '-': Not scanned\n" +
 		"- '0': Clean (no security findings detected)\n\n")
-
-	return
 }
 
 func (r *summaryRenderer) printf(format string, args ...any) {
@@ -233,7 +232,7 @@ func (r *summaryRenderer) showEmptyResultsWarning() {
 
 // splitAggregatedPackages splits aggregated packages into different results with path as target.
 // Other results will be returned as is.
-func splitAggregatedPackages(results types.Results) types.Results {
+func (r *summaryRenderer) splitAggregatedPackages(results types.Results) types.Results {
 	var newResults types.Results
 
 	for _, result := range results {
@@ -244,14 +243,22 @@ func splitAggregatedPackages(results types.Results) types.Results {
 			continue
 		}
 
-		newResults = append(newResults, splitAggregatedVulns(result)...)
+		newResults = append(newResults, r.splitAggregatedVulns(result)...)
 		newResults = append(newResults, splitAggregatedLicenses(result)...)
 
 	}
 	return newResults
 }
 
-func splitAggregatedVulns(result types.Result) types.Results {
+func (r *summaryRenderer) splitAggregatedVulns(result types.Result) types.Results {
+	// Handle case when result doesn't contain Package
+	// cf. https://github.com/aquasecurity/trivy/discussions/8537
+	if len(result.Packages) == 0 && len(result.Vulnerabilities) > 0 {
+		r.logger.Warn("Packages not found unexpectedly", log.String("target", result.Target))
+		return types.Results{
+			result,
+		}
+	}
 	// Save packages to display them in the table even if no vulnerabilities were found
 	resultMap := lo.SliceToMap(result.Packages, func(pkg ftypes.Package) (string, *types.Result) {
 		filePath := rootJarFromPath(pkg.FilePath)
@@ -263,7 +270,12 @@ func splitAggregatedVulns(result types.Result) types.Results {
 	})
 	for _, vuln := range result.Vulnerabilities {
 		pkgPath := rootJarFromPath(vuln.PkgPath)
-		resultMap[pkgPath].Vulnerabilities = append(resultMap[pkgPath].Vulnerabilities, vuln)
+
+		if res, ok := resultMap[pkgPath]; !ok {
+			r.logger.Warn("Package not found unexpectedly", log.String("package_path", pkgPath), log.String("vuln_id", vuln.VulnerabilityID))
+		} else {
+			res.Vulnerabilities = append(res.Vulnerabilities, vuln)
+		}
 	}
 	newResults := lo.Values(resultMap)
 	sort.Slice(newResults, func(i, j int) bool {

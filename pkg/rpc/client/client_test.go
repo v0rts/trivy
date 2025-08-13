@@ -1,7 +1,6 @@
 package client
 
 import (
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -18,6 +17,7 @@ import (
 	"github.com/aquasecurity/trivy-db/pkg/vulnsrc/vulnerability"
 	ftypes "github.com/aquasecurity/trivy/pkg/fanal/types"
 	"github.com/aquasecurity/trivy/pkg/types"
+	xhttp "github.com/aquasecurity/trivy/pkg/x/http"
 	"github.com/aquasecurity/trivy/rpc/common"
 	rpc "github.com/aquasecurity/trivy/rpc/scanner"
 )
@@ -140,11 +140,13 @@ func TestScanner_Scan(t *testing.T) {
 									CweIDs:           []string{"CWE-78"},
 									LastModifiedDate: utils.MustTimeParse("2020-01-01T01:01:00Z"),
 									PublishedDate:    utils.MustTimeParse("2001-01-01T01:01:00Z"),
+									Custom:           []uint8(nil),
 								},
 								SeveritySource: "nvd",
 								Layer: ftypes.Layer{
 									DiffID: "sha256:5216338b40a7b96416b8b9858974bbe4acc3096ee60acbc4dfb1ee02aecceb10",
 								},
+								Custom: []uint8(nil),
 							},
 						},
 					},
@@ -174,7 +176,7 @@ func TestScanner_Scan(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				if tt.expectation == nil {
 					e := map[string]any{
 						"code": "not_found",
@@ -213,7 +215,7 @@ func TestScanner_Scan(t *testing.T) {
 }
 
 func TestScanner_ScanServerInsecure(t *testing.T) {
-	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	defer ts.Close()
 
 	tests := []struct {
@@ -234,11 +236,7 @@ func TestScanner_ScanServerInsecure(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := rpc.NewScannerProtobufClient(ts.URL, &http.Client{
-				Transport: &http.Transport{
-					TLSClientConfig: &tls.Config{
-						InsecureSkipVerify: tt.insecure,
-					},
-				},
+				Transport: xhttp.NewTransport(xhttp.Options{Insecure: tt.insecure}),
 			})
 			s := NewService(ServiceOption{Insecure: tt.insecure}, WithRPCClient(c))
 			_, err := s.Scan(t.Context(), "dummy", "", nil, types.ScanOptions{})

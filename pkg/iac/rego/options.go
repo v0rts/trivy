@@ -106,19 +106,10 @@ func WithCustomSchemas(schemas map[string][]byte) options.ScannerOption {
 	}
 }
 
-// WithDisabledCheckIDs disables checks by their ID (ID field in metadata)
-func WithDisabledCheckIDs(ids ...string) options.ScannerOption {
+func WithIncludeDeprecatedChecks(include bool) options.ScannerOption {
 	return func(s options.ConfigurableScanner) {
 		if ss, ok := s.(*Scanner); ok {
-			ss.disabledCheckIDs.Append(ids...)
-		}
-	}
-}
-
-func WithIncludeDeprecatedChecks(enabled bool) options.ScannerOption {
-	return func(s options.ConfigurableScanner) {
-		if ss, ok := s.(*Scanner); ok {
-			ss.includeDeprecatedChecks = true
+			ss.includeDeprecatedChecks = include
 		}
 	}
 }
@@ -127,6 +118,14 @@ func WithFrameworks(frameworks ...framework.Framework) options.ScannerOption {
 	return func(s options.ConfigurableScanner) {
 		if ss, ok := s.(*Scanner); ok {
 			ss.frameworks = frameworks
+		}
+	}
+}
+
+func WithTrivyVersion(version string) options.ScannerOption {
+	return func(s options.ConfigurableScanner) {
+		if ss, ok := s.(*Scanner); ok {
+			ss.moduleFilters = append(ss.moduleFilters, TrivyVersionFilter(version))
 		}
 	}
 }

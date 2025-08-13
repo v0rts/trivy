@@ -23,8 +23,8 @@ func Test_pipAnalyzer_Analyze(t *testing.T) {
 				FilePath: "requirements.txt",
 				Packages: types.Packages{
 					{
-						Name:    "click",
-						Version: "8.0.0",
+						Name:    "annotated-types",
+						Version: "0.7.0",
 						Locations: []types.Location{
 							{
 								StartLine: 1,
@@ -32,12 +32,12 @@ func Test_pipAnalyzer_Analyze(t *testing.T) {
 							},
 						},
 						Licenses: []string{
-							"BSD License",
+							"MIT License",
 						},
 					},
 					{
-						Name:    "Flask",
-						Version: "2.0.0",
+						Name:    "click",
+						Version: "8.0.0",
 						Locations: []types.Location{
 							{
 								StartLine: 2,
@@ -49,12 +49,25 @@ func Test_pipAnalyzer_Analyze(t *testing.T) {
 						},
 					},
 					{
-						Name:    "itsdangerous",
+						Name:    "Flask",
 						Version: "2.0.0",
 						Locations: []types.Location{
 							{
 								StartLine: 3,
 								EndLine:   3,
+							},
+						},
+						Licenses: []string{
+							"BSD License",
+						},
+					},
+					{
+						Name:    "itsdangerous",
+						Version: "2.0.0",
+						Locations: []types.Location{
+							{
+								StartLine: 4,
+								EndLine:   4,
 							},
 						},
 					},
@@ -100,8 +113,8 @@ func Test_pipAnalyzer_Analyze(t *testing.T) {
 						FilePath: "requirements.txt",
 						Packages: types.Packages{
 							{
-								Name:    "click",
-								Version: "8.0.0",
+								Name:    "annotated-types",
+								Version: "0.7.0",
 								Locations: []types.Location{
 									{
 										StartLine: 1,
@@ -110,8 +123,8 @@ func Test_pipAnalyzer_Analyze(t *testing.T) {
 								},
 							},
 							{
-								Name:    "Flask",
-								Version: "2.0.0",
+								Name:    "click",
+								Version: "8.0.0",
 								Locations: []types.Location{
 									{
 										StartLine: 2,
@@ -120,12 +133,22 @@ func Test_pipAnalyzer_Analyze(t *testing.T) {
 								},
 							},
 							{
-								Name:    "itsdangerous",
+								Name:    "Flask",
 								Version: "2.0.0",
 								Locations: []types.Location{
 									{
 										StartLine: 3,
 										EndLine:   3,
+									},
+								},
+							},
+							{
+								Name:    "itsdangerous",
+								Version: "2.0.0",
+								Locations: []types.Location{
+									{
+										StartLine: 4,
+										EndLine:   4,
 									},
 								},
 							},
@@ -163,7 +186,7 @@ func Test_pipAnalyzer_Analyze(t *testing.T) {
 					pythonExecFileName = "python.exe"
 				}
 				// create temp python3 Executable
-				err = os.WriteFile(filepath.Join(tt.pythonExecDir, pythonExecFileName), nil, 0755)
+				err = os.WriteFile(filepath.Join(tt.pythonExecDir, pythonExecFileName), nil, 0o755)
 				require.NoError(t, err)
 
 				newPATH, err = filepath.Abs(tt.pythonExecDir)
@@ -245,7 +268,7 @@ func Test_pythonExecutablePath(t *testing.T) {
 			if runtime.GOOS == "windows" {
 				tt.execName += ".exe"
 			}
-			err = os.WriteFile(filepath.Join(binDir, tt.execName), nil, 0755)
+			err = os.WriteFile(filepath.Join(binDir, tt.execName), nil, 0o755)
 			require.NoError(t, err)
 
 			t.Setenv("PATH", binDir)

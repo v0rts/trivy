@@ -78,6 +78,16 @@ Common mistakes include the following, depending on where you are pulling images
 $ TRIVY_INSECURE=true trivy image [YOUR_IMAGE]
 ```
 
+Alternatively, you can specify the location of your certificate using `SSL_CERT_FILE` or `SSL_CERT_DIR` environment variables.
+
+```
+$ SSL_CERT_FILE=/path/to/cert trivy image [YOUR_IMAGE]
+```
+
+```
+$ SSL_CERT_DIR=/path/to/certs trivy image [YOUR_IMAGE]
+```
+
 ### GitHub Rate limiting
 Trivy uses GitHub API for [VEX repositories](../supply-chain/vex/repo.md).
 
@@ -266,6 +276,25 @@ $ brew unlink trivy && brew uninstall trivy
 $ brew install aquasecurity/trivy/trivy
 ```
 
+
+## Debugging
+### HTTP Request/Response Tracing
+
+For debugging network issues, connection problems, or authentication failures, you can enable HTTP request/response tracing using the `--trace-http` flag.
+
+!!! danger "Security Warning"
+    While Trivy attempts to redact known sensitive information such as authentication headers and common secrets, the `--trace-http` flag may still expose sensitive data in HTTP requests and responses.
+    
+    **Never use this flag in production environments or CI/CD pipelines.**
+    This flag is automatically disabled in CI environments for security.
+
+```bash
+# Enable HTTP tracing for debugging registry issues
+$ trivy image --trace-http registry.example.com/my-image:latest
+
+# HTTP tracing with other debugging options
+$ trivy image --trace-http --debug --insecure my-image:tag
+```
 
 ## Others
 ### Unknown error

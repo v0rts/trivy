@@ -51,7 +51,7 @@ func setupDockerConfig(t *testing.T, content string) {
 	cd := setupConfigDir(t)
 	p := filepath.Join(cd, "config.json")
 
-	err := os.WriteFile(p, []byte(content), 0600)
+	err := os.WriteFile(p, []byte(content), 0o600)
 	require.NoError(t, err)
 }
 
@@ -368,8 +368,8 @@ func TestUserAgents(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, tracker.agents, 1)
-	ok := tracker.agents.Contains(fmt.Sprintf("trivy/%s go-containerregistry", app.Version()))
-	require.True(t, ok, `user-agent header equals to "trivy/dev go-containerregistry"`)
+	ok := tracker.agents.Contains(fmt.Sprintf("trivy/%s", app.Version()))
+	require.True(t, ok, `user-agent header equals to "trivy/dev"`)
 }
 
 func localImage(t *testing.T) v1.Image {

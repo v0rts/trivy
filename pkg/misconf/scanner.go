@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -33,6 +34,7 @@ import (
 	tfpjsonscanner "github.com/aquasecurity/trivy/pkg/iac/scanners/terraformplan/tfjson"
 	"github.com/aquasecurity/trivy/pkg/log"
 	"github.com/aquasecurity/trivy/pkg/mapfs"
+	"github.com/aquasecurity/trivy/pkg/version/app"
 
 	_ "embed"
 )
@@ -48,12 +50,6 @@ var enablediacTypes = map[detection.FileType]types.ConfigType{
 	detection.FileTypeTerraformPlanSnapshot: types.TerraformPlanSnapshot,
 	detection.FileTypeJSON:                  types.JSON,
 	detection.FileTypeYAML:                  types.YAML,
-}
-
-type DisabledCheck struct {
-	ID      string
-	Scanner string // For logging
-	Reason  string // For logging
 }
 
 type ScannerOption struct {
@@ -74,14 +70,14 @@ type ScannerOption struct {
 	TerraformTFVars         []string
 	CloudFormationParamVars []string
 	TfExcludeDownloaded     bool
+	RawConfigScanners       []types.ConfigType
 	K8sVersion              string
 
 	FilePatterns      []string
 	ConfigFileSchemas []*ConfigFileSchema
 
-	DisabledChecks []DisabledCheck
-	SkipFiles      []string
-	SkipDirs       []string
+	SkipFiles []string
+	SkipDirs  []string
 
 	RegoScanner *rego.Scanner
 }
@@ -185,7 +181,7 @@ func (s *Scanner) filterFS(fsys fs.FS) (fs.FS, error) {
 	})
 
 	var foundRelevantFile bool
-	filter := func(path string, d fs.DirEntry) (bool, error) {
+	filter := func(path string, _ fs.DirEntry) (bool, error) {
 		file, err := fsys.Open(path)
 		if err != nil {
 			return false, err
@@ -233,17 +229,11 @@ func InitRegoScanner(opt ScannerOption) (*rego.Scanner, error) {
 }
 
 func initRegoOptions(opt ScannerOption) ([]options.ScannerOption, error) {
-	disabledCheckIDs := lo.Map(opt.DisabledChecks, func(check DisabledCheck, _ int) string {
-		log.Info("Check disabled", log.Prefix(log.PrefixMisconfiguration), log.String("ID", check.ID),
-			log.String("scanner", check.Scanner), log.String("reason", check.Reason))
-		return check.ID
-	})
-
 	opts := []options.ScannerOption{
 		rego.WithEmbeddedPolicies(!opt.DisableEmbeddedPolicies),
 		rego.WithEmbeddedLibraries(!opt.DisableEmbeddedLibraries),
 		rego.WithIncludeDeprecatedChecks(opt.IncludeDeprecatedChecks),
-		rego.WithDisabledCheckIDs(disabledCheckIDs...),
+		rego.WithTrivyVersion(app.Version()),
 	}
 
 	policyFS, policyPaths, err := CreatePolicyFS(opt.PolicyPaths)
@@ -301,6 +291,10 @@ func scannerOptions(t detection.FileType, opt ScannerOption) ([]options.ScannerO
 		}
 		opts = append(opts, regoOpts...)
 	}
+
+	opts = append(opts, options.WithScanRawConfig(
+		slices.Contains(opt.RawConfigScanners, enablediacTypes[t])),
+	)
 
 	switch t {
 	case detection.FileTypeHelm:
@@ -454,11 +448,11 @@ func CreateDataFS(dataPaths []string, opts ...string) (fs.FS, []string, error) {
 	// Check if k8sVersion is provided
 	if len(opts) > 0 {
 		k8sVersion := opts[0]
-		if err := fsys.MkdirAll("system", 0700); err != nil {
+		if err := fsys.MkdirAll("system", 0o700); err != nil {
 			return nil, nil, err
 		}
-		data := []byte(fmt.Sprintf(`{"k8s": {"version": %q}}`, k8sVersion))
-		if err := fsys.WriteVirtualFile("system/k8s-version.json", data, 0600); err != nil {
+		data := fmt.Appendf(nil, `{"k8s": {"version": %q}}`, k8sVersion)
+		if err := fsys.WriteVirtualFile("system/k8s-version.json", data, 0o600); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -564,7 +558,7 @@ func NewCauseWithCode(underlying scan.Result, flat scan.FlatResult) types.CauseM
 
 		if code, err := underlying.GetCode(); err == nil {
 			cause.Code = types.Code{
-				Lines: lo.Map(code.Lines, func(l scan.Line, i int) types.Line {
+				Lines: lo.Map(code.Lines, func(l scan.Line, _ int) types.Line {
 					return types.Line{
 						Number:      l.Number,
 						Content:     l.Content,

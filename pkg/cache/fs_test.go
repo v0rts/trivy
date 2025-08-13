@@ -20,7 +20,7 @@ func newTempDB(t *testing.T, dbPath string) (string, error) {
 	dir := t.TempDir()
 	if dbPath != "" {
 		d := filepath.Join(dir, "fanal")
-		if err := os.MkdirAll(d, 0700); err != nil {
+		if err := os.MkdirAll(d, 0o700); err != nil {
 			return "", err
 		}
 
@@ -227,9 +227,7 @@ func TestFSCache_PutBlob(t *testing.T) {
 				      "Packages": [
 				        {
 				          "Name": "musl",
-				          "Version": "1.1.22-r3",
-                          "Identifier": {},
-						  "Layer": {}
+				          "Version": "1.1.22-r3"
 				        }
 				      ]
 				    }
@@ -241,15 +239,11 @@ func TestFSCache_PutBlob(t *testing.T) {
 				      "Packages": [
                         {
                            "Name":"guzzlehttp/guzzle",
-                           "Version":"6.2.0",
-                           "Identifier": {},
-						   "Layer": {}
+                           "Version":"6.2.0"
                         },
                         {
                            "Name":"guzzlehttp/promises",
-                           "Version":"v1.3.1",
-                           "Identifier": {},
-						   "Layer": {}
+                           "Version":"v1.3.1"
                         }
 				      ]
 				    }
@@ -294,9 +288,8 @@ func TestFSCache_PutBlob(t *testing.T) {
 			if tt.wantErr != "" {
 				require.ErrorContains(t, err, tt.wantErr, tt.name)
 				return
-			} else {
-				require.NoError(t, err, tt.name)
 			}
+			require.NoError(t, err, tt.name)
 
 			fs.db.View(func(tx *bolt.Tx) error {
 				layerBucket := tx.Bucket([]byte(blobBucket))
@@ -348,9 +341,7 @@ func TestFSCache_PutArtifact(t *testing.T) {
 				  "HistoryPackages": [
 				    {
 				      "Name": "musl",
-				      "Version": "1.2.3",
-                      "Identifier": {},
-					  "Layer": {}
+				      "Version": "1.2.3"
 				    }
 				  ]
 				}
@@ -373,9 +364,8 @@ func TestFSCache_PutArtifact(t *testing.T) {
 			if tt.wantErr != "" {
 				require.ErrorContains(t, err, tt.wantErr, tt.name)
 				return
-			} else {
-				require.NoError(t, err, tt.name)
 			}
+			require.NoError(t, err, tt.name)
 
 			err = fs.db.View(func(tx *bolt.Tx) error {
 				// check decompressedDigestBucket

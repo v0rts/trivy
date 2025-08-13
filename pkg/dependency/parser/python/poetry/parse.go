@@ -2,7 +2,6 @@ package poetry
 
 import (
 	"slices"
-	"sort"
 
 	"github.com/BurntSushi/toml"
 	"golang.org/x/xerrors"
@@ -101,14 +100,12 @@ func (p *Parser) parseDependencies(deps map[string]any, pkgVersions map[string][
 			dependsOn = append(dependsOn, dep)
 		}
 	}
-	sort.Slice(dependsOn, func(i, j int) bool {
-		return dependsOn[i] < dependsOn[j]
-	})
+	slices.Sort(dependsOn)
 	return dependsOn
 }
 
 func (p *Parser) parseDependency(name string, versRange any, pkgVersions map[string][]string) (string, error) {
-	name = python.NormalizePkgName(name)
+	name = python.NormalizePkgName(name, true)
 	vers, ok := pkgVersions[name]
 	if !ok {
 		return "", xerrors.Errorf("no version found for %q", name)

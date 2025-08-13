@@ -23,6 +23,7 @@ import (
 	ftypes "github.com/aquasecurity/trivy/pkg/fanal/types"
 	"github.com/aquasecurity/trivy/pkg/log"
 	"github.com/aquasecurity/trivy/pkg/set"
+	xhttp "github.com/aquasecurity/trivy/pkg/x/http"
 	xio "github.com/aquasecurity/trivy/pkg/x/io"
 )
 
@@ -428,7 +429,8 @@ func (p *Parser) mergeDependencyManagements(depManagements ...[]pomDependency) [
 }
 
 func (p *Parser) parseDependencies(deps []pomDependency, props map[string]string, depManagement []pomDependency,
-	opts analysisOptions) []artifact {
+	opts analysisOptions,
+) []artifact {
 	// Imported POMs often have no dependencies, so dependencyManagement resolution can be skipped.
 	if len(deps) == 0 {
 		return nil
@@ -549,28 +551,25 @@ func (p *Parser) retrieveParent(currentPath, relativePath string, target artifac
 	// Try relativePath
 	if relativePath != "" {
 		pom, err := p.tryRelativePath(target, currentPath, relativePath)
-		if err != nil {
-			errs = multierror.Append(errs, err)
-		} else {
+		if err == nil {
 			return pom, nil
 		}
+		errs = multierror.Append(errs, err)
 	}
 
 	// If not found, search the parent director
 	pom, err := p.tryRelativePath(target, currentPath, "../pom.xml")
-	if err != nil {
-		errs = multierror.Append(errs, err)
-	} else {
+	if err == nil {
 		return pom, nil
 	}
+	errs = multierror.Append(errs, err)
 
 	// If not found, search local/remote remoteRepositories
 	pom, err = p.tryRepository(target.GroupID, target.ArtifactID, target.Version.String())
-	if err != nil {
-		errs = multierror.Append(errs, err)
-	} else {
+	if err == nil {
 		return pom, nil
 	}
+	errs = multierror.Append(errs, err)
 
 	// Reaching here means the POM wasn't found
 	return nil, errs
@@ -640,6 +639,7 @@ func (p *Parser) openPom(filePath string) (*pom, error) {
 		content:  content,
 	}, nil
 }
+
 func (p *Parser) tryRepository(groupID, artifactID, version string) (*pom, error) {
 	if version == "" {
 		return nil, xerrors.Errorf("Version missing for %s:%s", groupID, artifactID)
@@ -743,7 +743,7 @@ func (p *Parser) fetchPomFileNameFromMavenMetadata(repo string, paths []string) 
 		return "", nil
 	}
 
-	client := &http.Client{}
+	client := xhttp.Client()
 	resp, err := client.Do(req)
 	if err != nil {
 		p.logger.Debug("Failed to fetch", log.String("url", req.URL.String()), log.Err(err))
@@ -777,7 +777,7 @@ func (p *Parser) fetchPOMFromRemoteRepository(repo string, paths []string) (*pom
 		return nil, nil
 	}
 
-	client := &http.Client{}
+	client := xhttp.Client()
 	resp, err := client.Do(req)
 	if err != nil {
 		p.logger.Debug("Failed to fetch", log.String("url", req.URL.String()), log.Err(err))
@@ -832,4 +832,12 @@ func packageID(name, version string) string {
 // cf. https://github.com/apache/maven/blob/259404701402230299fe05ee889ecdf1c9dae816/maven-artifact/src/main/java/org/apache/maven/artifact/DefaultArtifact.java#L482-L486
 func isSnapshot(ver string) bool {
 	return strings.HasSuffix(ver, "SNAPSHOT") || ver == "LATEST"
+}
+
+func isDirectory(path string) (bool, error) {
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		return false, err
+	}
+	return fileInfo.IsDir(), err
 }

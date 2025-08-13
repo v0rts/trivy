@@ -71,7 +71,7 @@ func lookupBuildInfo(index int, layers []ftypes.BlobInfo) *ftypes.BuildInfo {
 
 	// Customer's layers build on top of Red Hat image are also missing content sets
 	//   - it needs to be shared from the last Red Hat's layers which contains content sets
-	for i := index - 1; i >= 1; i-- {
+	for i := index - 1; i >= 0; i-- {
 		if layers[i].BuildInfo != nil {
 			return layers[i].BuildInfo
 		}
@@ -238,7 +238,9 @@ func ApplyLayers(layers []ftypes.BlobInfo) ftypes.ArtifactDetail {
 	// De-duplicate same debian packages from different dirs
 	// cf. https://github.com/aquasecurity/trivy/issues/8297
 	mergedLayer.Packages = xslices.ZeroToNil(lo.UniqBy(mergedLayer.Packages, func(pkg ftypes.Package) string {
-		return cmp.Or(pkg.ID, fmt.Sprintf("%s@%s", pkg.Name, utils.FormatVersion(pkg)))
+		id := cmp.Or(pkg.ID, fmt.Sprintf("%s@%s", pkg.Name, utils.FormatVersion(pkg)))
+		// To avoid deduplicating packages with the same ID but from different locations (e.g. RPM archives), check the file path.
+		return fmt.Sprintf("%s/%s", id, pkg.FilePath)
 	}))
 
 	for _, app := range mergedLayer.Applications {
@@ -267,6 +269,13 @@ func ApplyLayers(layers []ftypes.BlobInfo) ftypes.ArtifactDetail {
 }
 
 func newPURL(pkgType ftypes.TargetType, metadata types.Metadata, pkg ftypes.Package) *packageurl.PackageURL {
+	// Possible cases when package doesn't have name/version (e.g. local package.json).
+	// For these cases we don't need to create PURL, because this PURL will be incorrect.
+	// TODO Dmitriy - move to `purl` package
+	if pkg.Name == "" {
+		return nil
+	}
+
 	p, err := purl.New(pkgType, metadata, pkg)
 	if err != nil {
 		log.Error("Failed to create PackageURL", log.Err(err))

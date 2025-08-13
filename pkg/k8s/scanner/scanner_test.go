@@ -276,7 +276,7 @@ func TestScanner_Scan(t *testing.T) {
 			ctx := t.Context()
 			uuid.SetFakeUUID(t, "3ff14136-e09f-4df9-80ea-%012d")
 
-			runner, err := cmd.NewRunner(ctx, flagOpts)
+			runner, err := cmd.NewRunner(ctx, flagOpts, cmd.TargetK8s)
 			require.NoError(t, err)
 
 			scanner := NewScanner(tt.clusterName, runner, flagOpts)
@@ -284,7 +284,7 @@ func TestScanner_Scan(t *testing.T) {
 			require.NoError(t, err)
 
 			gotComponents := lo.Values(got.BOM.Components())
-			require.Equal(t, len(tt.wantComponents), len(gotComponents))
+			require.Len(t, gotComponents, len(tt.wantComponents))
 
 			sort.Slice(gotComponents, func(i, j int) bool {
 				switch {

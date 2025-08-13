@@ -1591,6 +1591,15 @@ resource "test_resource" "test" {
 }`,
 			expected: []any{},
 		},
+		{
+			name: "unknown for-each",
+			src: `resource "test_resource" "test" {
+  dynamic "foo" {
+    for_each = lookup(foo, "") ? [] : []
+  }
+}`,
+			expected: []any{},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1970,7 +1979,6 @@ func TestModuleParents(t *testing.T) {
 	modSet := set.New[*terraform.Module]()
 	var root *terraform.Module
 	for _, mod := range modules {
-		mod := mod
 		modChildren[mod] = make([]*terraform.Module, 0)
 		modSet.Append(mod)
 
@@ -2022,7 +2030,7 @@ func TestModuleParents(t *testing.T) {
 		children := modChildren[mod]
 
 		t.Run(n.modulePath, func(t *testing.T) {
-			if !assert.Equal(t, len(n.children), len(children), "modChildren count for %s", n.modulePath) {
+			if !assert.Len(t, children, len(n.children), "modChildren count for %s", n.modulePath) {
 				return
 			}
 			for _, child := range children {
@@ -2777,7 +2785,72 @@ func TestInstancedLogger(t *testing.T) {
 	})
 
 	//nolint:testifylint // linter wants `emptyf`, but the output is not legible
-	if !assert.Lenf(t, buf.Bytes(), 0, "logs detected in global logger, all logs should be using the instanced logger") {
-		t.Log(string(buf.Bytes())) // Helpful for debugging
+	if !assert.Emptyf(t, buf.Bytes(), "logs detected in global logger, all logs should be using the instanced logger") {
+		t.Log(buf.String()) // Helpful for debugging
 	}
+}
+
+func TestProvidedWorkingDirectory(t *testing.T) {
+	const fakeCwd = "/some/path"
+	fsys := testutil.CreateFS(t, map[string]string{
+		"main.tf": `
+			resource "foo" "bar" {
+			  cwd = path.cwd
+			}
+		`,
+	})
+
+	parser := New(fsys, "", OptionWithWorkingDirectoryPath(fakeCwd))
+	err := parser.ParseFS(t.Context(), ".")
+	require.NoError(t, err)
+
+	modules, err := parser.EvaluateAll(t.Context())
+	require.NoError(t, err)
+
+	require.Len(t, modules, 1)
+	foo := modules[0].GetResourcesByType("foo")[0]
+	attr := foo.GetAttribute("cwd")
+	require.Equal(t, fakeCwd, attr.Value().AsString())
+}
+
+func Test_ResolveRemoteSubmoduleFromTerraformCache(t *testing.T) {
+	fsys := fstest.MapFS{
+		"main.tf": &fstest.MapFile{Data: []byte(`module "aws_bucket" {
+  source = "github.com/foo/bar.git//aws/modules/bucket?ref=v0.0.1"
+}
+
+locals {
+  test = module.aws_bucket.out
+}
+`)},
+		".terraform/modules/modules.json": &fstest.MapFile{Data: []byte(`{
+    "Modules": [
+        { "Key": "", "Source": "", "Dir": "." },
+        {
+            "Key": "aws_bucket",
+            "Source": "git::https://github.com/foo/bar.git//aws/modules/bucket?ref=v0.0.1",
+            "Dir": ".terraform/modules/aws_bucket/aws/modules/bucket"
+        }
+    ]
+}`)},
+		".terraform/modules/aws_bucket/aws/modules/bucket/main.tf": &fstest.MapFile{Data: []byte(`output "out" {
+  value = "some_value"
+}`)},
+	}
+
+	parser := New(fsys, "",
+		OptionWithSkipCachedModules(true),
+		OptionWithDownloads(false),
+		OptionStopOnHCLError(true),
+	)
+	err := parser.ParseFS(t.Context(), ".")
+	require.NoError(t, err)
+
+	modules, err := parser.EvaluateAll(t.Context())
+	require.NoError(t, err)
+
+	require.Len(t, modules, 2)
+	bucket := modules[0].GetBlocks().OfType("locals")[0]
+	attr := bucket.GetAttribute("test")
+	require.Equal(t, "some_value", attr.Value().AsString())
 }

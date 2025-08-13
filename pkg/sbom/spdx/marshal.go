@@ -415,12 +415,12 @@ func (m *Marshaler) spdxLicense(c *core.Component) (string, []*spdx.OtherLicense
 func (m *Marshaler) normalizeLicenses(licenses []string) (string, []*spdx.OtherLicense) {
 	var otherLicenses = make(map[string]*spdx.OtherLicense) // licenseID -> OtherLicense
 
-	license := strings.Join(lo.Map(licenses, func(license string, index int) string {
+	license := strings.Join(lo.Map(licenses, func(license string, _ int) string {
 		// We need to save text licenses before normalization,
 		// because it is impossible to handle all cases possible in the text.
 		// as an example, parse a license with 2 consecutive tokens (see https://github.com/aquasecurity/trivy/issues/8465)
-		if strings.HasPrefix(license, licensing.LicenseTextPrefix) {
-			license = strings.TrimPrefix(license, licensing.LicenseTextPrefix)
+		if after, ok := strings.CutPrefix(license, licensing.LicenseTextPrefix); ok {
+			license = after
 			otherLicense := m.newOtherLicense(license, true)
 			otherLicenses[otherLicense.LicenseIdentifier] = otherLicense
 			return otherLicense.LicenseIdentifier
@@ -436,11 +436,7 @@ func (m *Marshaler) normalizeLicenses(licenses []string) (string, []*spdx.OtherL
 		var licenseName string
 		switch e := expr.(type) {
 		case expression.SimpleExpr:
-			if strings.HasPrefix(e.License, LicenseRefPrefix) {
-				return e
-			}
-
-			if expression.ValidateSPDXLicense(e.License) || expression.ValidateSPDXException(e.License) {
+			if strings.HasPrefix(e.License, LicenseRefPrefix) || e.IsSPDXExpression() {
 				return e
 			}
 
@@ -452,10 +448,10 @@ func (m *Marshaler) normalizeLicenses(licenses []string) (string, []*spdx.OtherL
 			}
 
 			// Check that license and exception are valid
-			if expression.ValidateSPDXLicense(e.Left().String()) && expression.ValidateSPDXException(e.Right().String()) {
+			if e.IsSPDXExpression() {
 				// Use SimpleExpr for a valid SPDX license with an exception,
 				// to avoid parsing the license and exception separately.
-				return e
+				return expression.SimpleExpr{License: e.String()}
 			}
 
 			licenseName = e.String()
@@ -473,7 +469,7 @@ func (m *Marshaler) normalizeLicenses(licenses []string) (string, []*spdx.OtherL
 		return "", nil
 	}
 
-	return normalizedLicense, lo.Ternary(len(otherLicenses) > 0, lo.Values(otherLicenses), nil)
+	return normalizedLicense.String(), lo.Ternary(len(otherLicenses) > 0, lo.Values(otherLicenses), nil)
 }
 
 // newOtherLicense create new OtherLicense for license not included in the SPDX license list

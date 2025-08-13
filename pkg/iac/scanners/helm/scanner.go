@@ -74,13 +74,13 @@ func (s *Scanner) ScanFS(ctx context.Context, fsys fs.FS, dir string) (scan.Resu
 		}
 
 		if detection.IsArchive(filePath) {
-			scanResults, err := s.getScanResults(filePath, ctx, fsys)
+			scanResults, err := s.getScanResults(ctx, filePath, fsys)
 			if err != nil {
 				return err
 			}
 			results = append(results, scanResults...)
 		} else if path.Base(filePath) == chartutil.ChartfileName {
-			if scanResults, err := s.getScanResults(filepath.Dir(filePath), ctx, fsys); err != nil {
+			if scanResults, err := s.getScanResults(ctx, filepath.Dir(filePath), fsys); err != nil {
 				return err
 			} else {
 				results = append(results, scanResults...)
@@ -97,7 +97,7 @@ func (s *Scanner) ScanFS(ctx context.Context, fsys fs.FS, dir string) (scan.Resu
 
 }
 
-func (s *Scanner) getScanResults(path string, ctx context.Context, target fs.FS) (results []scan.Result, err error) {
+func (s *Scanner) getScanResults(ctx context.Context, path string, target fs.FS) (results []scan.Result, err error) {
 	helmParser, err := parser.New(path, s.parserOptions...)
 	if err != nil {
 		return nil, err
@@ -122,10 +122,9 @@ func (s *Scanner) getScanResults(path string, ctx context.Context, target fs.FS)
 	}
 
 	for _, file := range chartFiles {
-		file := file
 		s.logger.Debug("Processing rendered chart file", log.FilePath(file.TemplateFilePath))
 
-		ignoreRules := ignore.Parse(file.ManifestContent, file.TemplateFilePath, "")
+		ignoreRules := ignore.Parse(file.ManifestContent, file.TemplateFilePath, helmParser.ChartSource)
 		manifests, err := kparser.Parse(ctx, strings.NewReader(file.ManifestContent), file.TemplateFilePath)
 		if err != nil {
 			return nil, fmt.Errorf("unmarshal yaml: %w", err)

@@ -3,6 +3,7 @@ package scan
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"golang.org/x/text/cases"
@@ -36,25 +37,26 @@ type TerraformCustomCheck struct {
 }
 
 type Rule struct {
-	Deprecated     bool                             `json:"deprecated"`
-	AVDID          string                           `json:"avd_id"`
-	Aliases        []string                         `json:"aliases"`
-	ShortCode      string                           `json:"short_code"`
-	Summary        string                           `json:"summary"`
-	Explanation    string                           `json:"explanation"`
-	Impact         string                           `json:"impact"`
-	Resolution     string                           `json:"resolution"`
-	Provider       providers.Provider               `json:"provider"`
-	Service        string                           `json:"service"`
-	Links          []string                         `json:"links"`
-	Severity       severity.Severity                `json:"severity"`
-	Terraform      *EngineMetadata                  `json:"terraform,omitempty"`
-	CloudFormation *EngineMetadata                  `json:"cloud_formation,omitempty"`
-	Examples       string                           `json:"-"`
-	CustomChecks   CustomChecks                     `json:"-"`
-	RegoPackage    string                           `json:"-"`
-	Frameworks     map[framework.Framework][]string `json:"frameworks"`
-	Check          CheckFunc                        `json:"-"`
+	Deprecated          bool                             `json:"deprecated"`
+	AVDID               string                           `json:"avd_id"`
+	Aliases             []string                         `json:"aliases"`
+	ShortCode           string                           `json:"short_code"`
+	Summary             string                           `json:"summary"`
+	Explanation         string                           `json:"explanation"`
+	Impact              string                           `json:"impact"`
+	Resolution          string                           `json:"resolution"`
+	Provider            providers.Provider               `json:"provider"`
+	Service             string                           `json:"service"`
+	Links               []string                         `json:"links"`
+	Severity            severity.Severity                `json:"severity"`
+	Terraform           *EngineMetadata                  `json:"terraform,omitempty"`
+	CloudFormation      *EngineMetadata                  `json:"cloud_formation,omitempty"`
+	Examples            string                           `json:"-"`
+	CustomChecks        CustomChecks                     `json:"-"`
+	RegoPackage         string                           `json:"-"`
+	Frameworks          map[framework.Framework][]string `json:"frameworks"`
+	Check               CheckFunc                        `json:"-"`
+	MinimumTrivyVersion string                           `json:"minimum_trivy_version"`
 }
 
 func (r Rule) IsDeprecated() bool {
@@ -65,12 +67,7 @@ func (r Rule) HasID(id string) bool {
 	if r.AVDID == id || r.LongID() == id {
 		return true
 	}
-	for _, alias := range r.Aliases {
-		if alias == id {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(r.Aliases, id)
 }
 
 func (r Rule) LongID() string {

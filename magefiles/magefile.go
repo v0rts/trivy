@@ -3,9 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -34,21 +32,17 @@ var (
 	}
 )
 
-var protoFiles = []string{
-	"pkg/iac/scanners/terraformplan/snapshot/planproto/planfile.proto",
-}
-
 func init() {
 	slog.SetDefault(log.New(log.NewHandler(os.Stderr, nil))) // stdout is suppressed in mage
 }
 
 func version() (string, error) {
-	if ver, err := sh.Output("git", "describe", "--tags", "--always"); err != nil {
+	ver, err := sh.Output("git", "describe", "--tags", "--always")
+	if err != nil {
 		return "", err
-	} else {
-		// Strips the v prefix from the tag
-		return strings.TrimPrefix(ver, "v"), nil
 	}
+	// Strips the v prefix from the tag
+	return strings.TrimPrefix(ver, "v"), nil
 }
 
 func buildLdflags() (string, error) {
@@ -123,44 +117,38 @@ func Wire() error {
 	return sh.RunV("go", "tool", "wire", "gen", "./pkg/commands/...", "./pkg/rpc/...", "./pkg/k8s/...")
 }
 
-// Protoc parses PROTO_FILES and generates the Go code for client/server mode
-func Protoc() error {
-	// It is called in the protoc container
-	if _, ok := os.LookupEnv("TRIVY_PROTOC_CONTAINER"); ok {
-		rpcProtoFiles, err := findRPCProtoFiles()
-		if err != nil {
-			return err
-		}
-		for _, file := range rpcProtoFiles {
-			// Check if the generated Go file is up-to-date
-			dst := strings.TrimSuffix(file, ".proto") + ".pb.go"
-			if updated, err := target.Path(dst, file); err != nil {
-				return err
-			} else if !updated {
-				continue
-			}
+type Protoc mg.Namespace
 
-			// Generate
-			if err = sh.RunV("protoc", "--twirp_out", ".", "--twirp_opt", "paths=source_relative",
-				"--go_out", ".", "--go_opt", "paths=source_relative", file); err != nil {
-				return err
-			}
-		}
+// Generate parses PROTO_FILES and generates the Go code for client/server mode
+func (Protoc) Generate() error {
+	mg.Deps(Tool{}.Install) // Install buf and protoc-gen-twirp
 
-		for _, file := range protoFiles {
-			if err := sh.RunV("protoc", ".", "paths=source_relative", "--go_out", ".", "--go_opt",
-				"paths=source_relative", file); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
+	// Run buf generate
+	return sh.RunV("buf", "generate")
+}
 
-	// It is called on the host
-	if err := sh.RunV("bash", "-c", "docker build -t trivy-protoc - < Dockerfile.protoc"); err != nil {
-		return err
-	}
-	return sh.Run("docker", "run", "--rm", "-it", "--platform", "linux/x86_64", "-v", "${PWD}:/app", "-w", "/app", "trivy-protoc", "mage", "protoc")
+// Fmt formats protobuf files using buf
+func (Protoc) Fmt() error {
+	mg.Deps(Tool{}.Install) // Install buf
+
+	// Run buf format
+	return sh.RunV("buf", "format", "-w")
+}
+
+// Lint runs linting on protobuf files using buf
+func (Protoc) Lint() error {
+	mg.Deps(Tool{}.Install) // Install buf
+
+	// Run buf lint
+	return sh.RunV("buf", "lint")
+}
+
+// Breaking checks for breaking changes in protobuf files using buf
+func (Protoc) Breaking() error {
+	mg.Deps(Tool{}.Install) // Install buf
+
+	// Run buf breaking against main branch
+	return sh.RunV("buf", "breaking", "--against", ".git#branch=main")
 }
 
 // Yacc generates parser
@@ -189,19 +177,13 @@ func (Test) FixtureTerraformPlanSnapshots() error {
 // GenerateModules compiles WASM modules for unit tests
 func (Test) GenerateModules() error {
 	pattern := filepath.Join("pkg", "module", "testdata", "*", "*.go")
-	if err := compileWasmModules(pattern); err != nil {
-		return err
-	}
-	return nil
+	return compileWasmModules(pattern)
 }
 
 // GenerateExampleModules compiles example Wasm modules for integration tests
 func (Test) GenerateExampleModules() error {
 	pattern := filepath.Join("examples", "module", "*", "*.go")
-	if err := compileWasmModules(pattern); err != nil {
-		return err
-	}
-	return nil
+	return compileWasmModules(pattern)
 }
 
 // UpdateGolden updates golden files for integration tests
@@ -349,40 +331,33 @@ func (t Test) UpdateVMGolden() error {
 	return sh.RunWithV(ENV, "go", "test", "-v", "-tags=vm_integration", "./integration/...", "-update")
 }
 
+// E2e runs E2E tests using testscript framework
+func (t Test) E2e() error {
+	return sh.RunWithV(ENV, "go", "test", "-v", "-tags=e2e", "./e2e/...")
+}
+
 type Lint mg.Namespace
 
 // Run runs linters
-func (Lint) Run() error {
-	mg.Deps(Tool{}.GolangciLint)
-	return sh.RunV("golangci-lint", "run")
+func (l Lint) Run() error {
+	mg.Deps(Tool{}.GolangciLint, Tool{}.Install)
+	if err := sh.RunV("golangci-lint", "run", "--build-tags=integration"); err != nil {
+		return err
+	}
+	return sh.RunV("modernize", "./...")
 }
 
 // Fix auto fixes linters
-func (Lint) Fix() error {
-	mg.Deps(Tool{}.GolangciLint)
-	return sh.RunV("golangci-lint", "run", "--fix")
-}
-
-// Fmt formats Go code and proto files
-func Fmt() error {
-	// Check if clang-format is installed
-	if !installed("clang-format") {
-		return errors.New("need to install clang-format")
-	}
-
-	// Format proto files
-	rpcProtoFiles, err := findRPCProtoFiles()
-	if err != nil {
+func (l Lint) Fix() error {
+	mg.Deps(Tool{}.GolangciLint, Tool{}.Install)
+	if err := sh.RunV("golangci-lint", "run", "--fix", "--build-tags=integration"); err != nil {
 		return err
 	}
+	return sh.RunV("modernize", "-fix", "./...")
+}
 
-	allProtoFiles := append(protoFiles, rpcProtoFiles...)
-	for _, file := range allProtoFiles {
-		if err = sh.Run("clang-format", "-i", file); err != nil {
-			return err
-		}
-	}
-
+// Fmt formats Go code
+func Fmt() error {
 	// Format Go code
 	return sh.Run("go", "fmt", "./...")
 }
@@ -442,7 +417,15 @@ func Clean() error {
 // Label updates labels
 func Label() error {
 	mg.Deps(Tool{}.Install) // Install labeler
-	return sh.RunV("labeler", "apply", "misc/triage/labels.yaml", "-l", "5")
+
+	args := []string{"apply", "misc/triage/labels.yaml", "-l", "5"}
+
+	// Add --repo flag if GITHUB_REPOSITORY environment variable is set
+	if repo := os.Getenv("GITHUB_REPOSITORY"); repo != "" {
+		args = append(args, "-r", repo)
+	}
+
+	return sh.RunV("labeler", args...)
 }
 
 type Docs mg.Namespace
@@ -450,7 +433,7 @@ type Docs mg.Namespace
 // Prepare CSS
 func (Docs) Css() error {
 	const (
-		homepageSass = "docs/assets/css/trivy_v1_homepage.scss"
+		homepageSass = "docs/assets/css/trivy_v1_styles.scss"
 	)
 	homepageCss := strings.TrimSuffix(homepageSass, ".scss") + ".min.css"
 	if updated, err := target.Path(homepageCss, homepageSass); err != nil {
@@ -490,25 +473,6 @@ func (Docs) Serve() error {
 // Generate generates CLI references
 func (Docs) Generate() error {
 	return sh.RunWith(ENV, "go", "run", "-tags=mage_docs", "./magefiles")
-}
-
-func findRPCProtoFiles() ([]string, error) {
-	var files []string
-	err := filepath.WalkDir("rpc", func(path string, d fs.DirEntry, err error) error {
-		switch {
-		case err != nil:
-			return err
-		case d.IsDir():
-			return nil
-		case filepath.Ext(path) == ".proto":
-			files = append(files, path)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return files, nil
 }
 
 func exists(filename string) bool {

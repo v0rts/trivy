@@ -54,11 +54,11 @@ func (o *OS) Merge(newOS OS) {
 		return
 	}
 
-	switch {
+	switch o.Family {
 	// OLE also has /etc/redhat-release and it detects OLE as RHEL by mistake.
 	// In that case, OS must be overwritten with the content of /etc/oracle-release.
 	// There is the same problem between Debian and Ubuntu.
-	case o.Family == RedHat, o.Family == Debian:
+	case RedHat, Debian:
 		*o = newOS
 	default:
 		if o.Family == "" {
@@ -177,7 +177,7 @@ type BlobInfo struct {
 	WhiteoutFiles []string `json:",omitempty"`
 
 	// Analysis result
-	OS                OS                 `json:",omitempty"`
+	OS                OS                 `json:",omitzero"`
 	Repository        *Repository        `json:",omitempty"`
 	PackageInfos      []PackageInfo      `json:",omitempty"`
 	Applications      []Application      `json:",omitempty"`
@@ -206,7 +206,7 @@ func (b BlobInfo) Layer() Layer {
 
 // ArtifactDetail represents the analysis result.
 type ArtifactDetail struct {
-	OS                OS                 `json:",omitempty"`
+	OS                OS                 `json:",omitzero"`
 	Repository        *Repository        `json:",omitempty"`
 	Packages          Packages           `json:",omitempty"`
 	Applications      Applications       `json:",omitempty"`

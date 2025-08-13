@@ -21,6 +21,8 @@ import (
 	"github.com/aquasecurity/trivy/pkg/log"
 	"github.com/aquasecurity/trivy/pkg/remote"
 	"github.com/aquasecurity/trivy/pkg/version/doc"
+	xio "github.com/aquasecurity/trivy/pkg/x/io"
+	xos "github.com/aquasecurity/trivy/pkg/x/os"
 )
 
 const (
@@ -131,11 +133,11 @@ func (a *Artifact) Download(ctx context.Context, dir string, opt DownloadOption)
 	// Take the file name of the first layer if not specified
 	fileName := opt.Filename
 	if fileName == "" {
-		if v, ok := manifest.Layers[0].Annotations[titleAnnotation]; !ok {
+		v, ok := manifest.Layers[0].Annotations[titleAnnotation]
+		if !ok {
 			return xerrors.Errorf("annotation %s is missing", titleAnnotation)
-		} else {
-			fileName = v
 		}
+		fileName = v
 	}
 
 	layerMediaType, err := layer.MediaType()
@@ -173,7 +175,7 @@ func (a *Artifact) download(ctx context.Context, layer v1.Layer, fileName, dir s
 	defer bar.Finish()
 
 	// https://github.com/hashicorp/go-getter/issues/326
-	tempDir, err := os.MkdirTemp("", "trivy")
+	tempDir, err := xos.MkdirTemp("", "oci-download-")
 	if err != nil {
 		return xerrors.Errorf("failed to create a temp dir: %w", err)
 	}
@@ -188,7 +190,7 @@ func (a *Artifact) download(ctx context.Context, layer v1.Layer, fileName, dir s
 	}()
 
 	// Download the layer content into a temporal file
-	if _, err = io.Copy(f, pr); err != nil {
+	if _, err = xio.Copy(ctx, f, pr); err != nil {
 		return xerrors.Errorf("copy error: %w", err)
 	}
 

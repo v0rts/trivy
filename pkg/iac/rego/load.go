@@ -293,9 +293,7 @@ func (s *Scanner) handleModulesMetadata(path string, module *ast.Module) {
 		return
 	}
 
-	if metadata != nil {
-		s.moduleMetadata[path] = metadata
-	}
+	s.moduleMetadata[path] = metadata
 }
 
 // moduleHasLegacyMetadataFormat checks if the module has a legacy metadata format.
@@ -319,40 +317,35 @@ func moduleHasLegacyInputFormat(module *ast.Module) bool {
 // filterModules filters the Rego modules based on metadata.
 func (s *Scanner) filterModules() error {
 	filtered := make(map[string]*ast.Module)
+
 	for name, module := range s.policies {
 		metadata, err := s.metadataForModule(context.Background(), name, module, nil)
 		if err != nil {
 			return fmt.Errorf("retrieve metadata for module %s: %w", name, err)
 		}
-
-		if s.isModuleApplicable(module, metadata, name) {
-			filtered[name] = module
+		if metadata == nil {
+			continue
 		}
+
+		if !lo.EveryBy(s.moduleFilters, func(filter RegoModuleFilter) bool {
+			return filter(module, metadata)
+		}) {
+			continue
+		}
+
+		if len(metadata.InputOptions.Selectors) == 0 && !metadata.Library {
+			s.logger.Warn(
+				"Module has no input selectors - it will be loaded for all inputs",
+				log.FilePath(module.Package.Location.File),
+				log.String("module", name),
+			)
+		}
+
+		filtered[name] = module
 	}
 
 	s.policies = filtered
 	return nil
-}
-
-func (s *Scanner) isModuleApplicable(module *ast.Module, metadata *StaticMetadata, name string) bool {
-	if !metadata.hasAnyFramework(s.frameworks) {
-		return false
-	}
-
-	// ignore disabled built-in checks
-	if IsBuiltinNamespace(getModuleNamespace(module)) && s.disabledCheckIDs.Contains(metadata.ID) {
-		return false
-	}
-
-	if len(metadata.InputOptions.Selectors) == 0 && !metadata.Library {
-		s.logger.Warn(
-			"Module has no input selectors - it will be loaded for all inputs",
-			log.FilePath(module.Package.Location.File),
-			log.String("module", name),
-		)
-	}
-
-	return true
 }
 
 func ParseRegoModule(name, input string) (*ast.Module, error) {

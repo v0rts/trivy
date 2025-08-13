@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"slices"
 	"strings"
 
 	"github.com/open-policy-agent/opa/v1/ast"
@@ -61,11 +62,11 @@ type Scanner struct {
 	includeEmbeddedPolicies  bool
 	includeEmbeddedLibraries bool
 
+	moduleFilters []RegoModuleFilter
+
 	embeddedLibs   map[string]*ast.Module
 	embeddedChecks map[string]*ast.Module
 	customSchemas  map[string][]byte
-
-	disabledCheckIDs set.Set[string]
 }
 
 func (s *Scanner) trace(heading string, input any) {
@@ -91,18 +92,24 @@ func NewScanner(opts ...options.ScannerOption) *Scanner {
 	LoadAndRegister()
 
 	s := &Scanner{
-		regoErrorLimit:   ast.CompileErrorLimitDefault,
-		ruleNamespaces:   builtinNamespaces.Clone(),
-		runtimeValues:    addRuntimeValues(),
-		logger:           log.WithPrefix("rego"),
-		customSchemas:    make(map[string][]byte),
-		disabledCheckIDs: set.New[string](),
-		moduleMetadata:   make(map[string]*StaticMetadata),
+		regoErrorLimit: ast.CompileErrorLimitDefault,
+		ruleNamespaces: builtinNamespaces.Clone(),
+		runtimeValues:  addRuntimeValues(),
+		logger:         log.WithPrefix("rego"),
+		customSchemas:  make(map[string][]byte),
+		moduleMetadata: make(map[string]*StaticMetadata),
 	}
 
 	for _, opt := range opts {
 		opt(s)
 	}
+
+	s.moduleFilters = append(
+		s.moduleFilters,
+		FrameworksFilter(s.frameworks),
+		IncludeDeprecatedFilter(s.includeDeprecatedChecks),
+	)
+
 	return s
 }
 
@@ -205,10 +212,6 @@ func (s *Scanner) ScanInput(ctx context.Context, sourceType types.Source, inputs
 			continue
 		}
 
-		if !s.includeDeprecatedChecks && staticMeta.Deprecated {
-			continue // skip deprecated checks
-		}
-
 		// skip if check isn't relevant to what is being scanned
 		if !isPolicyApplicable(sourceType, staticMeta, inputs...) {
 			continue
@@ -286,7 +289,17 @@ func checkSubtype(ii map[string]any, provider string, subTypes []SubType) bool {
 	return false
 }
 
+var sourcesWithExplicitSelectors = []types.Source{
+	// apply terrafrom-specific checks only if selectors exist
+	types.SourceTerraformRaw,
+}
+
 func isPolicyApplicable(sourceType types.Source, staticMetadata *StaticMetadata, inputs ...Input) bool {
+	if len(staticMetadata.InputOptions.Selectors) == 0 &&
+		slices.Contains(sourcesWithExplicitSelectors, sourceType) {
+		return false
+	}
+
 	if len(staticMetadata.InputOptions.Selectors) == 0 { // check always applies if no selectors
 		return true
 	}
